@@ -973,7 +973,11 @@
 
       return (
         <div className={`min-h-screen ${editMode ? "bg-[#0d0d1a]" : ""}`} style={editMode ? {boxShadow:"inset 0 0 200px rgba(59,130,246,0.03)"} : {}}>
-          {editMode && <div className="fixed top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-blue-400 to-blue-500 z-40" />}
+          {editMode && (
+            <div className="fixed top-0 left-0 right-0 z-40 bg-gradient-to-r from-blue-600 via-blue-500 to-blue-600 flex items-center justify-center py-1.5 shadow-lg">
+              <span className="text-[11px] font-bold text-white tracking-widest uppercase">✏️ Edit Mode</span>
+            </div>
+          )}
           {/* Hero */}
           <header className="relative overflow-hidden border-b border-[#1a1a1a]">
             <div className="absolute inset-0 bg-gradient-to-br from-blue-900/20 via-teal-900/10 to-purple-900/20" />
