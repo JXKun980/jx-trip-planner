@@ -359,10 +359,11 @@
           <div className="w-20 shrink-0 flex justify-center">
             <div className="w-[2px] h-full bg-[#2a2a2a]" />
           </div>
-          <div className="flex-1 flex justify-center py-1">
+          <div className="flex-1 py-1">
             <button onClick={onClick}
-              className="w-6 h-6 rounded-full bg-[#2a2a2a] hover:bg-blue-500/30 border border-dashed border-[#3a3a3a] hover:border-blue-500/50 text-gray-500 hover:text-blue-400 text-sm font-bold flex items-center justify-center transition-all"
-              title="Add stop here">+</button>
+              className="w-full py-2 rounded-xl border-2 border-dashed border-[#2a2a2a] hover:border-blue-500/50 bg-transparent hover:bg-blue-500/5 text-gray-500 hover:text-blue-400 text-[11px] font-medium flex items-center justify-center gap-1.5 transition-all">
+              <span className="text-sm">+</span> Add Stop
+            </button>
           </div>
         </div>
       );
@@ -665,6 +666,18 @@
                 title="Remove stop">✕</button>
             )}
             <div className="card-glow rounded-xl bg-[#141414] border border-[#2a2a2a] overflow-hidden transition-all hover:border-[#3a3a3a]">
+              {editMode && (
+                <div className="flex items-center justify-center py-1 cursor-grab active:cursor-grabbing border-b border-[#2a2a2a] bg-[#0d0d0d] hover:bg-[#1a1a1a] transition-colors"
+                  draggable="true"
+                  onDragStart={e => { e.dataTransfer.setData("stopId", stop.id); e.dataTransfer.effectAllowed = "move"; }}
+                >
+                  <div className="flex flex-col gap-[3px] opacity-40">
+                    <div className="w-5 h-[2px] bg-gray-400 rounded" />
+                    <div className="w-5 h-[2px] bg-gray-400 rounded" />
+                    <div className="w-5 h-[2px] bg-gray-400 rounded" />
+                  </div>
+                </div>
+              )}
               <div className="flex">
                 <div className="flex-1 min-w-0">
                   <div className="p-3.5 pb-2.5">
@@ -803,7 +816,7 @@
 
     const DAY_COLORS = ["#3b82f6","#14b8a6","#a855f7","#f59e0b","#ef4444","#ec4899","#8b5cf6","#06b6d4"];
 
-    function DaySection({day, onChange, startH, onStartH, homeBattery, onHomeBatteryChange, editMode, onDelete, onEditField, onAddStop, onEditDay}) {
+    function DaySection({day, onChange, startH, onStartH, homeBattery, onHomeBatteryChange, editMode, onDelete, onEditField, onAddStop, onEditDay, onDeleteDay, onReorderDay}) {
       const [open, setOpen] = useState(true);
       const st = dayStats(day.stops);
       const levels = useMemo(() => {
@@ -824,9 +837,35 @@
       // Key for route map iframe to force re-render on stop changes
       const routeKey = useMemo(() => day.stops.map(s => s.mq || s.id).join("|"), [day.stops]);
 
+      const onReorderStop = (dragId, dropIndex) => {
+        const fromIdx = day.stops.findIndex(s => s.id === dragId);
+        if (fromIdx === -1 || fromIdx === dropIndex) return;
+        const newStops = [...day.stops];
+        const [moved] = newStops.splice(fromIdx, 1);
+        newStops.splice(dropIndex > fromIdx ? dropIndex - 1 : dropIndex, 0, moved);
+        onEditDay(day.day, { stops: newStops });
+      };
+
       return (
         <div className="mb-7">
-          <div className={`w-full ${day.gradient} rounded-2xl p-5 mb-3 text-left border border-[#2a2a2a] card-glow`}>
+          <div className={`w-full ${day.gradient} rounded-2xl p-5 mb-3 text-left border border-[#2a2a2a] card-glow relative`}>
+            {editMode && (
+              <div className="flex items-center justify-center py-1.5 -mx-5 -mt-5 mb-3 cursor-grab active:cursor-grabbing rounded-t-2xl bg-black/20 hover:bg-black/30 transition-colors"
+                draggable="true"
+                onDragStart={e => { e.dataTransfer.setData("dayNum", String(day.day)); e.dataTransfer.effectAllowed = "move"; }}
+              >
+                <div className="flex flex-col gap-[3px] opacity-40">
+                  <div className="w-6 h-[2px] bg-gray-400 rounded" />
+                  <div className="w-6 h-[2px] bg-gray-400 rounded" />
+                  <div className="w-6 h-[2px] bg-gray-400 rounded" />
+                </div>
+              </div>
+            )}
+            {editMode && (
+              <button onClick={(e) => { e.stopPropagation(); onDeleteDay(day.day); }}
+                className="absolute top-2 right-2 w-7 h-7 rounded-full bg-red-500/80 hover:bg-red-400 text-white text-xs font-bold flex items-center justify-center z-10 shadow transition-colors"
+                title="Delete day">✕</button>
+            )}
             <div className="flex items-start justify-between cursor-pointer" onClick={()=>setOpen(!open)}>
               <div className="flex-1">
                 {editMode ? (
@@ -891,7 +930,12 @@
           {open && <div className="ml-2">
             {day.stops.map((s,i)=>(
               <React.Fragment key={s.id}>
-                <StopCard stop={s} battArr={levels[i].arr} battDep={levels[i].dep} arrTime={levels[i].t} onChange={onChange} color={day.color} homeBattery={homeBattery} onHomeBatteryChange={onHomeBatteryChange} editMode={editMode} onDelete={onDelete} onEditField={onEditField} prevStop={i > 0 ? day.stops[i-1] : null} />
+                <div
+                  onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+                  onDrop={e => { e.preventDefault(); const dragId = e.dataTransfer.getData("stopId"); if (dragId) onReorderStop(dragId, i); }}
+                >
+                  <StopCard stop={s} battArr={levels[i].arr} battDep={levels[i].dep} arrTime={levels[i].t} onChange={onChange} color={day.color} homeBattery={homeBattery} onHomeBatteryChange={onHomeBatteryChange} editMode={editMode} onDelete={onDelete} onEditField={onEditField} prevStop={i > 0 ? day.stops[i-1] : null} />
+                </div>
                 {editMode && <AddStopButton onClick={()=>onAddStop(day.day, i + 1)} />}
               </React.Fragment>
             ))}
@@ -919,6 +963,13 @@
       const [startHours, setStartHours] = useState([8,7,7,6]);
       const [homeBattery, setHomeBattery] = useState(100);
       const [editMode, setEditMode] = useState(false);
+      const [heroTitle, setHeroTitle] = useState(() => localStorage.getItem("heroTitle") || "Great Ocean Road");
+      const [heroSubtitle, setHeroSubtitle] = useState(() => localStorage.getItem("heroSubtitle") || "& Beyond Adventure");
+      const [heroSnippet, setHeroSnippet] = useState(() => localStorage.getItem("heroSnippet") || "Melbourne → Geelong → Great Ocean Road → Warrnambool → Mount Gambier → Naracoorte → Pink Lake → Home");
+
+      React.useEffect(() => { localStorage.setItem("heroTitle", heroTitle); }, [heroTitle]);
+      React.useEffect(() => { localStorage.setItem("heroSubtitle", heroSubtitle); }, [heroSubtitle]);
+      React.useEffect(() => { localStorage.setItem("heroSnippet", heroSnippet); }, [heroSnippet]);
 
       // Persist days to localStorage
       React.useEffect(() => { localStorage.setItem("tripDays", JSON.stringify(days)); }, [days]);
@@ -959,9 +1010,35 @@
         }));
       };
 
-      const onResetTrip = () => { localStorage.removeItem("tripDays"); setDays(initialDays); };
+      const onResetTrip = () => { localStorage.removeItem("tripDays"); localStorage.removeItem("heroTitle"); localStorage.removeItem("heroSubtitle"); localStorage.removeItem("heroSnippet"); setDays(initialDays); setHeroTitle("Great Ocean Road"); setHeroSubtitle("& Beyond Adventure"); setHeroSnippet("Melbourne → Geelong → Great Ocean Road → Warrnambool → Mount Gambier → Naracoorte → Pink Lake → Home"); };
 
       const onEditDay = (dayNum, updates) => setDays(p => p.map(d => d.day === dayNum ? { ...d, ...updates } : d));
+
+      const onReorderDay = (fromDay, toDay) => {
+        setDays(p => {
+          const arr = [...p];
+          const fromIdx = arr.findIndex(d => d.day === fromDay);
+          const toIdx = arr.findIndex(d => d.day === toDay);
+          if (fromIdx === -1 || toIdx === -1) return p;
+          const [moved] = arr.splice(fromIdx, 1);
+          arr.splice(toIdx, 0, moved);
+          return arr.map((d, i) => ({ ...d, day: i + 1 }));
+        });
+      };
+
+      const onDeleteDay = (dayNum) => {
+        setDays(p => p.filter(d => d.day !== dayNum).map((d, i) => ({ ...d, day: i + 1 })));
+      };
+
+      const onAddDay = () => {
+        const newDayNum = days.length + 1;
+        setDays(p => [...p, {
+          day: newDayNum, date: `Day ${newDayNum}`, title: "New Day",
+          subtitle: "Plan your stops", color: DAY_COLORS[(newDayNum - 1) % DAY_COLORS.length],
+          gradient: `day-gradient-${((newDayNum - 1) % 4) + 1}`, startBattery: 100,
+          stops: []
+        }]);
+      };
 
       const totals = useMemo(()=>{
         let d=0,dr=0,s=0,c=0,cs=0;
@@ -998,18 +1075,32 @@
                   </button>
                 </div>
               </div>
-              <h1 className="text-4xl md:text-5xl font-extrabold mb-2">
-                <span className="gradient-text">Great Ocean Road</span><br/>
-                <span className="text-white">& Beyond Adventure</span>
-              </h1>
-              <p className="text-gray-400 text-base mb-5 max-w-xl">Melbourne → Geelong → Great Ocean Road → Warrnambool → Mount Gambier → Naracoorte → Pink Lake → Home</p>
+              {editMode ? (
+                <div className="mb-2 space-y-1">
+                  <input value={heroTitle} onChange={e=>setHeroTitle(e.target.value)}
+                    className="w-full bg-black/30 border border-white/10 rounded px-2 py-1.5 text-4xl md:text-5xl font-extrabold text-white focus:outline-none focus:border-blue-500/50" placeholder="Title line 1" />
+                  <input value={heroSubtitle} onChange={e=>setHeroSubtitle(e.target.value)}
+                    className="w-full bg-black/30 border border-white/10 rounded px-2 py-1.5 text-4xl md:text-5xl font-extrabold text-white focus:outline-none focus:border-blue-500/50" placeholder="Title line 2" />
+                </div>
+              ) : (
+                <h1 className="text-4xl md:text-5xl font-extrabold mb-2">
+                  <span className="gradient-text">{heroTitle}</span><br/>
+                  <span className="text-white">{heroSubtitle}</span>
+                </h1>
+              )}
+              {editMode ? (
+                <input value={heroSnippet} onChange={e=>setHeroSnippet(e.target.value)}
+                  className="w-full bg-black/30 border border-white/10 rounded px-2 py-1 text-base text-gray-400 mb-5 max-w-xl focus:outline-none focus:border-blue-500/50" placeholder="Route snippet" />
+              ) : (
+                <p className="text-gray-400 text-base mb-5 max-w-xl">{heroSnippet}</p>
+              )}
               <div className="flex items-center gap-2 text-[11px] text-gray-500 mb-5 flex-wrap">
                 {[`🚗 ${VEHICLE_INFO.model}`,`🔋 ${VEHICLE_INFO.battery}`,`📏 ~${VEHICLE_INFO.rangeReal}km real range`].map(t=>(
                   <span key={t} className="px-2 py-1 rounded bg-[#1a1a1a] border border-[#2a2a2a]">{t}</span>
                 ))}
               </div>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                {[[totals.d.toLocaleString(),"Total km","white"],[fmt(totals.dr),"Driving","white"],[fmt(totals.s),"Activities","#60a5fa"],[String(totals.cs),"Charge stops","#4ade80"],["4","Days","#c084fc"]].map(([v,l,c])=>(
+                {[[totals.d.toLocaleString(),"Total km","white"],[fmt(totals.dr),"Driving","white"],[fmt(totals.s),"Activities","#60a5fa"],[String(totals.cs),"Charge stops","#4ade80"],[String(days.length),"Days","#c084fc"]].map(([v,l,c])=>(
                   <div key={l} className="bg-[#141414] rounded-xl p-3.5 border border-[#2a2a2a]">
                     <div className="text-xl font-bold" style={{color:c}}>{v}</div>
                     <div className="text-[11px] text-gray-500">{l}</div>
@@ -1021,7 +1112,21 @@
 
           {/* Days */}
           <div className="max-w-4xl mx-auto px-4 py-4">
-            {daysWithBattery.map((d,i)=><DaySection key={d.day} day={d} onChange={onChange} startH={startHours[i]} onStartH={h=>onStartH(i,h)} homeBattery={homeBattery} onHomeBatteryChange={setHomeBattery} editMode={editMode} onDelete={onDelete} onEditField={onEditField} onAddStop={onAddStop} onEditDay={onEditDay} />)}
+            {daysWithBattery.map((d,i)=>(
+              <div key={d.day}
+                onDragOver={e => { if (e.dataTransfer.types.includes("daynum")) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}}
+                onDrop={e => { const fromDay = +e.dataTransfer.getData("dayNum"); if (fromDay) onReorderDay(fromDay, d.day); }}
+              >
+                <DaySection day={d} onChange={onChange} startH={startHours[i]||8} onStartH={h=>onStartH(i,h)} homeBattery={homeBattery} onHomeBatteryChange={setHomeBattery} editMode={editMode} onDelete={onDelete} onEditField={onEditField} onAddStop={onAddStop} onEditDay={onEditDay} onDeleteDay={onDeleteDay} onReorderDay={onReorderDay} />
+              </div>
+            ))}
+            {editMode && (
+              <button onClick={onAddDay}
+                className="w-full py-8 rounded-2xl border-2 border-dashed border-[#2a2a2a] hover:border-blue-500/40 bg-[#141414] hover:bg-blue-500/5 text-gray-500 hover:text-blue-400 flex flex-col items-center gap-2 transition-all mb-7">
+                <span className="text-3xl">+</span>
+                <span className="text-sm font-medium">Add New Day</span>
+              </button>
+            )}
           </div>
 
           {/* Charging summary */}
