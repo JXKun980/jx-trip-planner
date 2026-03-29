@@ -158,12 +158,18 @@
     // ── Helpers ──
     function fmt(m) { const h=Math.floor(m/60), r=m%60; return h===0?`${r}min`:r===0?`${h}h`:`${h}h ${r}min`; }
     function timeOfDay(h, addM) { const t=h*60+addM, hr=Math.floor(t/60)%24, mn=t%60, ap=hr>=12?"PM":"AM", h12=hr===0?12:hr>12?hr-12:hr; return `${h12}:${String(mn).padStart(2,'0')} ${ap}`; }
-    function mapEmbed(lat, lng) { return `https://maps.google.com/maps?q=${lat},${lng}&z=13&output=embed`; }
-    function mapLink(mq) { return `https://www.google.com/maps/search/${mq}`; }
-    function dayRouteEmbed(stops) {
-      const pts = stops.map(s => s.mq).join("/");
-      return `https://www.google.com/maps/embed?pb=!1m${stops.length * 2}` + // fallback: use dir URL in iframe
-        ""; // We'll use the dir format instead
+    function mapEmbed(stop) {
+      // Use address query for chargers (more precise), lat/lng for others
+      const q = stop.type === "charge" && stop.address
+        ? encodeURIComponent(stop.address)
+        : `${stop.lat},${stop.lng}`;
+      return `https://maps.google.com/maps?q=${q}&z=15&output=embed`;
+    }
+    function mapLink(stop) {
+      const q = stop.type === "charge" && stop.address
+        ? encodeURIComponent(stop.address)
+        : stop.mq;
+      return `https://www.google.com/maps/search/${q}`;
     }
     function dayRouteUrl(stops) {
       return "https://www.google.com/maps/dir/" + stops.map(s => s.mq).join("/");
@@ -172,6 +178,99 @@
       let dist=0, drv=0, stay=0, chrg=0, cs=0;
       stops.forEach(s => { dist+=s.dist; drv+=s.drive; stay+=s.stay; if(s.type==="charge"){chrg+=s.stay;cs++;} });
       return {dist,drv,stay,chrg,cs};
+    }
+
+    // ── Live Charger Availability (Open Charge Map API) ──
+    const OCM_API = "https://api.openchargemap.org/v3/poi/";
+    const OCM_KEY = "73b7ccab-e1dc-4a99-8e01-bdbef2e4fc68"; // free community key
+
+    async function fetchChargerStatus(lat, lng) {
+      try {
+        const url = `${OCM_API}?output=json&latitude=${lat}&longitude=${lng}&distance=2&distanceunit=KM&operatorid=23&maxresults=1&key=${OCM_KEY}`;
+        const res = await fetch(url);
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (!data || data.length === 0) return null;
+        const site = data[0];
+        const conns = site.Connections || [];
+        const totalPoints = conns.reduce((s, c) => s + (c.Quantity || 1), 0);
+        const status = site.StatusType?.Title || "Unknown";
+        const verified = site.DateLastVerified || site.DateLastStatusUpdate;
+        const addr = site.AddressInfo;
+        return {
+          title: addr?.Title || "Tesla Supercharger",
+          status,
+          totalPoints,
+          connections: conns.map(c => ({
+            type: c.ConnectionType?.Title || "Unknown",
+            kw: c.PowerKW || 0,
+            qty: c.Quantity || 1,
+            status: c.StatusType?.Title || status,
+          })),
+          lastVerified: verified ? new Date(verified).toLocaleDateString() : null,
+          lat: addr?.Latitude,
+          lng: addr?.Longitude,
+        };
+      } catch { return null; }
+    }
+
+    function ChargerAvailability({ lat, lng, stopId }) {
+      const [data, setData] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [fetchedAt, setFetchedAt] = useState(null);
+
+      const doFetch = async () => {
+        setLoading(true);
+        const result = await fetchChargerStatus(lat, lng);
+        setData(result);
+        setFetchedAt(new Date());
+        setLoading(false);
+      };
+
+      React.useEffect(() => { doFetch(); }, []);
+
+      if (loading && !data) return (
+        <div className="px-3.5 py-1.5 border-t border-[#2a2a2a] bg-[#0a0a0a]">
+          <span className="text-[10px] text-gray-500">⏳ Loading charger data...</span>
+        </div>
+      );
+
+      if (!data) return (
+        <div className="px-3.5 py-1.5 border-t border-[#2a2a2a] bg-[#0a0a0a] flex items-center gap-2">
+          <span className="text-[10px] text-gray-500">⚠️ Could not fetch charger data</span>
+          <button onClick={doFetch} className="text-[10px] text-blue-400 hover:text-blue-300">🔄</button>
+        </div>
+      );
+
+      const statusColor = data.status === "Operational" ? "#22c55e" : data.status === "Planned" ? "#f59e0b" : "#ef4444";
+
+      return (
+        <div className="px-3.5 py-2 border-t border-[#2a2a2a] bg-[#0a0a0a]">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-[10px] font-semibold text-gray-300">📡 Live Charger Status</span>
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{background: statusColor + "22", color: statusColor, border: `1px solid ${statusColor}44`}}>
+              {data.status}
+            </span>
+            <button onClick={doFetch} disabled={loading}
+              className={`ml-auto text-[10px] text-blue-400 hover:text-blue-300 transition-colors ${loading ? "animate-spin" : ""}`}
+              title="Refresh data">
+              🔄
+            </button>
+          </div>
+          <div className="flex items-center gap-3 flex-wrap text-[10px]">
+            <span className="text-gray-400">⚡ {data.totalPoints} charging points</span>
+            {data.connections.map((c, i) => (
+              <span key={i} className="text-gray-500">
+                {c.qty}× {c.type} {c.kw > 0 ? `(${c.kw}kW)` : ""}
+              </span>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 mt-1 text-[9px] text-gray-600">
+            {fetchedAt && <span>Fetched: {fetchedAt.toLocaleTimeString()}</span>}
+            {data.lastVerified && <span>· Last verified: {data.lastVerified}</span>}
+          </div>
+        </div>
+      );
     }
 
     // ── Comments persistence ──
@@ -317,13 +416,14 @@
                     <div className="flex justify-between text-[10px] text-gray-600 mt-0.5"><span>{fmt(stop.min)}</span><span>{fmt(stop.max)}</span></div>
                   </div>
                 )}
+                {isCh && <ChargerAvailability lat={stop.lat} lng={stop.lng} stopId={stop.id} />}
                 <CommentsSection stopId={stop.id} />
                 {stop.tip && <div className="px-3.5 py-1.5 border-t border-[#2a2a2a] bg-[#0a0a0a]"><p className="text-[10px] text-yellow-500/80">💡 {stop.tip}</p></div>}
               </div>
               {/* Right: Google Maps mini */}
-              <a href={mapLink(stop.mq)} target="_blank" rel="noopener noreferrer"
+              <a href={mapLink(stop)} target="_blank" rel="noopener noreferrer"
                 className="hidden md:block w-44 shrink-0 border-l border-[#2a2a2a] relative group cursor-pointer">
-                <iframe src={mapEmbed(stop.lat, stop.lng)} className="w-full h-full pointer-events-none" style={{minHeight:"160px",border:0}} loading="lazy" title={stop.name} />
+                <iframe src={mapEmbed(stop)} className="w-full h-full pointer-events-none" style={{minHeight:"160px",border:0}} loading="lazy" title={stop.name} />
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
                   <span className="bg-white text-black text-[10px] font-bold px-2 py-1 rounded shadow">Open in Maps ↗</span>
                 </div>
