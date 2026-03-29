@@ -383,6 +383,7 @@
                 {isCh && stop.charge && (
                   <div className="px-3.5 py-2 bg-green-500/5 border-t border-green-500/10">
                     <div className="flex items-center gap-3 flex-wrap text-[11px]">
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{background:"#22c55e22",color:"#22c55e",border:"1px solid #22c55e44"}}>Operational</span>
                       <span><span className="text-gray-500">Stalls: </span><span className="text-green-400">{stop.charge.stalls}</span></span>
                       <span><span className="text-gray-500">Charger: </span><span className="text-green-400">{stop.charge.kw} kW</span></span>
                       <span><span className="text-gray-500">+{Math.round(battDep - battArr)}% </span><span className="text-gray-600">in {fmt(stop.stay)}</span></span>
@@ -405,7 +406,6 @@
                     <div className="flex justify-between text-[10px] text-gray-600 mt-0.5"><span>{fmt(stop.min)}</span><span>{fmt(stop.max)}</span></div>
                   </div>
                 )}
-                {isCh && <ChargerAvailability lat={stop.lat} lng={stop.lng} stopId={stop.id} chargeInfo={stop.charge} />}
                 <CommentsSection stopId={stop.id} />
                 {stop.tip && <div className="px-3.5 py-1.5 border-t border-[#2a2a2a] bg-[#0a0a0a]"><p className="text-[10px] text-yellow-500/80">💡 {stop.tip}</p></div>}
               </div>
