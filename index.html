@@ -416,12 +416,13 @@
                   <CommentsSection stopId={stop.id} />
                   {stop.tip && <div className="px-3.5 py-1.5 border-t border-[#2a2a2a] bg-[#0a0a0a]"><p className="text-[10px] text-yellow-500/80">💡 {stop.tip}</p></div>}
                 </div>
-                {/* Right: Google Maps mini */}
+                {/* Right: Google Maps link */}
                 <a href={mapLink(stop)} target="_blank" rel="noopener noreferrer"
-                  className="hidden md:block w-44 shrink-0 border-l border-[#2a2a2a] relative group cursor-pointer">
-                  <iframe src={mapEmbed(stop)} className="w-full h-full pointer-events-none" style={{minHeight:"160px",border:0}} loading="lazy" title={stop.name} />
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
-                    <span className="bg-white text-black text-[10px] font-bold px-2 py-1 rounded shadow">Open in Maps ↗</span>
+                  className="hidden md:flex w-10 shrink-0 border-l border-[#2a2a2a] items-center justify-center bg-[#0d0d0d] hover:bg-[#1a1a1a] transition-colors group cursor-pointer"
+                  title="Open in Google Maps">
+                  <div className="flex flex-col items-center gap-1 opacity-40 group-hover:opacity-100 transition-opacity">
+                    <span className="text-lg">📍</span>
+                    <span className="text-[8px] text-gray-400 group-hover:text-white font-medium writing-mode-vertical" style={{writingMode:"vertical-rl"}}>Maps</span>
                   </div>
                 </a>
               </div>
