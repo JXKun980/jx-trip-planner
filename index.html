@@ -501,32 +501,32 @@
       const markerRef = React.useRef(null);
       const inputRef = React.useRef(null);
 
-      // Initialize Leaflet map
+      // Initialize Leaflet map — pin fixed to center, move map to move pin
       React.useEffect(() => {
         if (!mapRef.current || mapInstanceRef.current) return;
         const map = L.map(mapRef.current, { zoomControl: true }).setView([lat, lng], 14);
         L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
           attribution: '© OpenStreetMap',
         }).addTo(map);
-        const marker = L.marker([lat, lng], { draggable: true }).addTo(map);
-        marker.on("dragend", async () => {
-          const pos = marker.getLatLng();
-          setLat(pos.lat); setLng(pos.lng);
-          const address = await reverseGeocode(pos.lat, pos.lng);
-          setAddr(address);
+        let debounceTimer = null;
+        map.on("moveend", () => {
+          const c = map.getCenter();
+          setLat(c.lat); setLng(c.lng);
+          if (debounceTimer) clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(async () => {
+            const address = await reverseGeocode(c.lat, c.lng);
+            setAddr(address);
+          }, 600);
         });
         mapInstanceRef.current = map;
-        markerRef.current = marker;
-        // Fix tile rendering after modal appears
         setTimeout(() => map.invalidateSize(), 200);
         return () => { map.remove(); mapInstanceRef.current = null; };
       }, []);
 
-      // Move map/marker when lat/lng change from search
+      // Move map when lat/lng change from search
       const moveMap = (newLat, newLng) => {
         setLat(newLat); setLng(newLng);
         if (mapInstanceRef.current) mapInstanceRef.current.setView([newLat, newLng], 15);
-        if (markerRef.current) markerRef.current.setLatLng([newLat, newLng]);
       };
 
       const handleInput = (val) => {
@@ -586,13 +586,22 @@
               <input value={name} onChange={e=>setName(e.target.value)} placeholder="Stop name"
                 className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg px-3 py-1.5 text-[11px] text-gray-300 mt-2 focus:border-blue-500/50 focus:outline-none" />
             </div>
-            {/* Map */}
-            <div ref={mapRef} style={{height:"320px",width:"100%"}} className="border-t border-b border-[#2a2a2a]" />
+            {/* Map with fixed center pin */}
+            <div className="relative border-t border-b border-[#2a2a2a]">
+              <div ref={mapRef} style={{height:"320px",width:"100%"}} />
+              {/* Fixed pin in center */}
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[1000]">
+                <div className="flex flex-col items-center -mt-8">
+                  <span className="text-3xl drop-shadow-lg">📍</span>
+                  <div className="w-2 h-2 rounded-full bg-black/30 mt-[-4px]" />
+                </div>
+              </div>
+            </div>
             {/* Coordinates display */}
             <div className="px-5 py-1.5 text-[10px] text-gray-500 flex gap-3">
               <span>Lat: {lat.toFixed(5)}</span>
               <span>Lng: {lng.toFixed(5)}</span>
-              <span className="text-gray-600 ml-auto">Drag the pin to change location</span>
+              <span className="text-gray-600 ml-auto">Move the map to change location</span>
             </div>
             {/* Footer buttons */}
             <div className="px-5 py-3 flex justify-end gap-2 border-t border-[#2a2a2a]">
@@ -794,7 +803,9 @@
       );
     }
 
-    function DaySection({day, onChange, startH, onStartH, homeBattery, onHomeBatteryChange, editMode, onDelete, onEditField, onAddStop}) {
+    const DAY_COLORS = ["#3b82f6","#14b8a6","#a855f7","#f59e0b","#ef4444","#ec4899","#8b5cf6","#06b6d4"];
+
+    function DaySection({day, onChange, startH, onStartH, homeBattery, onHomeBatteryChange, editMode, onDelete, onEditField, onAddStop, onEditDay}) {
       const [open, setOpen] = useState(true);
       const st = dayStats(day.stops);
       const levels = useMemo(() => {
@@ -812,24 +823,53 @@
         return out;
       }, [day, startH]);
       const endT = useMemo(()=>timeOfDay(startH, day.stops.reduce((s,x)=>s+x.drive+x.stay,0)), [day,startH]);
+      // Key for route map iframe to force re-render on stop changes
+      const routeKey = useMemo(() => day.stops.map(s => s.mq || s.id).join("|"), [day.stops]);
 
       return (
         <div className="mb-7">
-          <button onClick={()=>setOpen(!open)} className={`w-full ${day.gradient} rounded-2xl p-5 mb-3 text-left border border-[#2a2a2a] card-glow transition-all hover:scale-[1.003]`}>
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="flex items-center gap-3 mb-2">
-                  <span className="text-[11px] font-bold px-3 py-1 rounded-full" style={{background:day.color,color:"#000"}}>DAY {day.day}</span>
-                  <span className="text-[11px] text-gray-400">{day.date}</span>
-                  <select value={startH} onClick={e=>e.stopPropagation()} onChange={e=>{e.stopPropagation();onStartH(+e.target.value);}}
-                    className="bg-black/40 border border-white/10 rounded px-2 py-0.5 text-[11px] text-white ml-2">
-                    {Array.from({length:13},(_,i)=>i+5).map(h=><option key={h} value={h}>{timeOfDay(h,0)}</option>)}
-                  </select>
-                </div>
-                <h2 className="text-lg font-bold text-white mb-0.5">{day.title}</h2>
-                <p className="text-sm text-gray-400">{day.subtitle}</p>
+          <div className={`w-full ${day.gradient} rounded-2xl p-5 mb-3 text-left border border-[#2a2a2a] card-glow`}>
+            <div className="flex items-start justify-between cursor-pointer" onClick={()=>setOpen(!open)}>
+              <div className="flex-1">
+                {editMode ? (
+                  <div className="space-y-2" onClick={e=>e.stopPropagation()}>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[11px] font-bold px-3 py-1 rounded-full" style={{background:day.color,color:"#000"}}>DAY {day.day}</span>
+                      <div className="flex gap-1">
+                        {DAY_COLORS.map(c=>(
+                          <button key={c} onClick={()=>onEditDay(day.day,{color:c})}
+                            className={`w-5 h-5 rounded-full border-2 transition-all ${c===day.color?"border-white scale-110":"border-transparent opacity-60 hover:opacity-100"}`}
+                            style={{background:c}} />
+                        ))}
+                      </div>
+                      <select value={startH} onChange={e=>onStartH(+e.target.value)}
+                        className="bg-black/40 border border-white/10 rounded px-2 py-0.5 text-[11px] text-white ml-auto">
+                        {Array.from({length:13},(_,i)=>i+5).map(h=><option key={h} value={h}>{timeOfDay(h,0)}</option>)}
+                      </select>
+                    </div>
+                    <input value={day.date} onChange={e=>onEditDay(day.day,{date:e.target.value})}
+                      className="w-full bg-black/30 border border-white/10 rounded px-2 py-1 text-[11px] text-gray-300" placeholder="Date" />
+                    <input value={day.title} onChange={e=>onEditDay(day.day,{title:e.target.value})}
+                      className="w-full bg-black/30 border border-white/10 rounded px-2 py-1.5 text-base font-bold text-white" placeholder="Day title" />
+                    <input value={day.subtitle} onChange={e=>onEditDay(day.day,{subtitle:e.target.value})}
+                      className="w-full bg-black/30 border border-white/10 rounded px-2 py-1 text-sm text-gray-400" placeholder="Subtitle" />
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className="text-[11px] font-bold px-3 py-1 rounded-full" style={{background:day.color,color:"#000"}}>DAY {day.day}</span>
+                      <span className="text-[11px] text-gray-400">{day.date}</span>
+                      <select value={startH} onClick={e=>e.stopPropagation()} onChange={e=>{e.stopPropagation();onStartH(+e.target.value);}}
+                        className="bg-black/40 border border-white/10 rounded px-2 py-0.5 text-[11px] text-white ml-2">
+                        {Array.from({length:13},(_,i)=>i+5).map(h=><option key={h} value={h}>{timeOfDay(h,0)}</option>)}
+                      </select>
+                    </div>
+                    <h2 className="text-lg font-bold text-white mb-0.5">{day.title}</h2>
+                    <p className="text-sm text-gray-400">{day.subtitle}</p>
+                  </>
+                )}
               </div>
-              <div className="text-xl mt-1">{open?"▾":"▸"}</div>
+              <div className="text-xl mt-1 ml-3 shrink-0">{open?"▾":"▸"}</div>
             </div>
             <div className="flex gap-3 mt-3 flex-wrap">
               {[["Distance",`${st.dist} km`,"white"],["Drive",fmt(st.drv),"white"],["Activities",fmt(st.stay),"#60a5fa"],["Charging",fmt(st.chrg),"#4ade80"],["Schedule",`${timeOfDay(startH,0)} → ${endT}`,"white"]].map(([l,v,c])=>(
@@ -839,10 +879,10 @@
                 </div>
               ))}
             </div>
-          </button>
-          {/* Day route map */}
+          </div>
+          {/* Day route map — key forces re-render when stops change */}
           <div className="mb-3 rounded-xl overflow-hidden border border-[#2a2a2a] card-glow relative" style={{height:"220px"}}>
-            <iframe
+            <iframe key={routeKey}
               src={`https://maps.google.com/maps?saddr=${day.stops[0].mq}&daddr=${day.stops.slice(1).map(s=>s.mq).join("+to:")}&output=embed`}
               className="w-full h-full" style={{border:0}} loading="lazy" title={`Day ${day.day} route`} />
             <a href={dayRouteUrl(day.stops)} target="_blank" rel="noopener noreferrer"
@@ -923,6 +963,8 @@
 
       const onResetTrip = () => { localStorage.removeItem("tripDays"); setDays(initialDays); };
 
+      const onEditDay = (dayNum, updates) => setDays(p => p.map(d => d.day === dayNum ? { ...d, ...updates } : d));
+
       const totals = useMemo(()=>{
         let d=0,dr=0,s=0,c=0,cs=0;
         daysWithBattery.forEach(day=>{const st=dayStats(day.stops);d+=st.dist;dr+=st.drv;s+=st.stay;c+=st.chrg;cs+=st.cs;});
@@ -930,7 +972,8 @@
       },[daysWithBattery]);
 
       return (
-        <div className="min-h-screen">
+        <div className={`min-h-screen ${editMode ? "bg-[#0d0d1a]" : ""}`} style={editMode ? {boxShadow:"inset 0 0 200px rgba(59,130,246,0.03)"} : {}}>
+          {editMode && <div className="fixed top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-blue-400 to-blue-500 z-40" />}
           {/* Hero */}
           <header className="relative overflow-hidden border-b border-[#1a1a1a]">
             <div className="absolute inset-0 bg-gradient-to-br from-blue-900/20 via-teal-900/10 to-purple-900/20" />
@@ -943,7 +986,7 @@
                 <div className="flex items-center gap-2">
                   {editMode && (
                     <button onClick={onResetTrip}
-                      className="px-3 py-2 rounded-lg text-xs font-bold bg-[#141414] border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-all">
+                      className="px-5 py-2.5 rounded-xl text-sm font-bold bg-[#141414] border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-all">
                       ↺ Reset
                     </button>
                   )}
@@ -976,7 +1019,7 @@
 
           {/* Days */}
           <div className="max-w-4xl mx-auto px-4 py-4">
-            {daysWithBattery.map((d,i)=><DaySection key={d.day} day={d} onChange={onChange} startH={startHours[i]} onStartH={h=>onStartH(i,h)} homeBattery={homeBattery} onHomeBatteryChange={setHomeBattery} editMode={editMode} onDelete={onDelete} onEditField={onEditField} onAddStop={onAddStop} />)}
+            {daysWithBattery.map((d,i)=><DaySection key={d.day} day={d} onChange={onChange} startH={startHours[i]} onStartH={h=>onStartH(i,h)} homeBattery={homeBattery} onHomeBatteryChange={setHomeBattery} editMode={editMode} onDelete={onDelete} onEditField={onEditField} onAddStop={onAddStop} onEditDay={onEditDay} />)}
           </div>
 
           {/* Charging summary */}
