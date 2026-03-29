@@ -1,0 +1,306 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+  <name>Tesla Great Ocean Road Trip — Apr 3–6</name>
+  <description>4-day Tesla Model 3 road trip: Melbourne → Great Ocean Road → Warrnambool → Mount Gambier → Naracoorte → Pink Lake → Home. Includes all charging stops.</description>
+
+  <!-- Styles -->
+  <Style id="start"><IconStyle><Icon><href>https://maps.google.com/mapfiles/kml/paddle/grn-circle.png</href></Icon></IconStyle></Style>
+  <Style id="attraction"><IconStyle><Icon><href>https://maps.google.com/mapfiles/kml/paddle/blu-circle.png</href></Icon></IconStyle></Style>
+  <Style id="charge"><IconStyle><Icon><href>https://maps.google.com/mapfiles/kml/paddle/ylw-circle.png</href></Icon></IconStyle></Style>
+  <Style id="sleep"><IconStyle><Icon><href>https://maps.google.com/mapfiles/kml/paddle/purple-circle.png</href></Icon></IconStyle></Style>
+
+  <!-- Day 1 -->
+  <Folder>
+    <name>Day 1 — Thu 3 Apr: Melbourne → Wye River</name>
+    <Placemark>
+      <name>🏠 52 Park Street, Melbourne (START)</name>
+      <description><![CDATA[
+        <b>Type:</b> Starting Point<br/>
+        <b>Address:</b> 52 Park Street, South Melbourne VIC 3205<br/>
+        <b>Battery:</b> 100%<br/>
+        <b>Tip:</b> Start with 100% charge. LFP battery is safe to charge to 100%.<br/>
+        <b>Comments:</b> Trip begins here! Make sure car is fully charged the night before.
+      ]]></description>
+      <styleUrl>#start</styleUrl>
+      <Point><coordinates>144.9631,-37.8136,0</coordinates></Point>
+    </Placemark>
+
+    <Placemark>
+      <name>🎡 Geelong Waterfront</name>
+      <description><![CDATA[
+        <b>Type:</b> Attraction — 1 hour stay<br/>
+        <b>Distance:</b> 77km from Melbourne (1h drive)<br/>
+        <b>Tip:</b> Walk along Cunningham Pier, see the famous painted bollards.<br/>
+        <b>Comments:</b> Great spot for morning coffee. Carousel for kids. Painted bollards are a must-see photo op.
+      ]]></description>
+      <styleUrl>#attraction</styleUrl>
+      <Point><coordinates>144.3617,-38.1499,0</coordinates></Point>
+    </Placemark>
+
+    <Placemark>
+      <name>⚡ Tesla Supercharger Geelong</name>
+      <description><![CDATA[
+        <b>Type:</b> Charging Stop — 20 min<br/>
+        <b>Address:</b> 71 Bellarine Hwy, Newcomb VIC 3219<br/>
+        <b>Charger:</b> Tesla Supercharger V3 (250 kW) · 8 stalls<br/>
+        <b>Tip:</b> Critical charge! Next Supercharger is in Colac. Top up well before the Great Ocean Road.<br/>
+        <b>Comments:</b> Essential stop. Charging is sparse on the GOR so don't skip this.
+      ]]></description>
+      <styleUrl>#charge</styleUrl>
+      <Point><coordinates>144.3892,-38.1685,0</coordinates></Point>
+    </Placemark>
+
+    <Placemark>
+      <name>🏛️ Memorial Arch</name>
+      <description><![CDATA[
+        <b>Type:</b> Attraction — 20 min stay<br/>
+        <b>Distance:</b> 40km from Geelong (35 min drive)<br/>
+        <b>Tip:</b> Perfect photo opportunity! The arch is right by the roadside.<br/>
+        <b>Comments:</b> The iconic "Great Ocean Road" sign — classic road-trip photo. Quick stop, park right next to it.
+      ]]></description>
+      <styleUrl>#attraction</styleUrl>
+      <Point><coordinates>144.1813,-38.4716,0</coordinates></Point>
+    </Placemark>
+
+    <Placemark>
+      <name>🌊 Great Ocean Road Scenic Drive</name>
+      <description><![CDATA[
+        <b>Type:</b> Attraction — 45 min for stops<br/>
+        <b>Distance:</b> 50km winding coastal road (1h drive)<br/>
+        <b>Tip:</b> Teddy's Lookout near Lorne is spectacular. Multiple photo stops along the way.<br/>
+        <b>Comments:</b> The most beautiful stretch of road. Take it slow and pull over at lookouts. Anglesea and Lorne are lovely.
+      ]]></description>
+      <styleUrl>#attraction</styleUrl>
+      <Point><coordinates>143.9767,-38.5417,0</coordinates></Point>
+    </Placemark>
+
+    <Placemark>
+      <name>🌙 6080 Great Ocean Road, Wye River (SLEEP)</name>
+      <description><![CDATA[
+        <b>Type:</b> Overnight Stay<br/>
+        <b>Address:</b> 6080 Great Ocean Road, Wye River VIC 3221<br/>
+        <b>Tip:</b> No charger at accommodation — will charge at Colac tomorrow.<br/>
+        <b>Comments:</b> Peaceful area. Listen to the ocean at night. No EV charger here so plan accordingly for morning.
+      ]]></description>
+      <styleUrl>#sleep</styleUrl>
+      <Point><coordinates>143.8917,-38.6358,0</coordinates></Point>
+    </Placemark>
+  </Folder>
+
+  <!-- Day 2 -->
+  <Folder>
+    <name>Day 2 — Fri 4 Apr: Apollo Bay → Warrnambool</name>
+    <Placemark>
+      <name>☕ Apollo Bay</name>
+      <description><![CDATA[
+        <b>Type:</b> Attraction — 1 hour stay<br/>
+        <b>Distance:</b> 30km from Wye River (35 min drive)<br/>
+        <b>Tip:</b> Try the Great Ocean Road Brewhouse. Great bakeries and cafés.<br/>
+        <b>Comments:</b> Charming seaside town. Walk the harbour, grab breakfast. Good public toilets available.
+      ]]></description>
+      <styleUrl>#attraction</styleUrl>
+      <Point><coordinates>143.6717,-38.7573,0</coordinates></Point>
+    </Placemark>
+
+    <Placemark>
+      <name>⚡ Tesla Supercharger Colac</name>
+      <description><![CDATA[
+        <b>Type:</b> Charging Stop — 35 min<br/>
+        <b>Address:</b> 144/158 Bromfield St, Colac VIC 3250<br/>
+        <b>Charger:</b> Tesla Supercharger V3 (250 kW) · 4 stalls<br/>
+        <b>Tip:</b> Essential stop. Detour slightly inland. Grab lunch while charging.<br/>
+        <b>Comments:</b> Only 4 stalls so may be busy on holidays. Plan for a meal break here.
+      ]]></description>
+      <styleUrl>#charge</styleUrl>
+      <Point><coordinates>143.5859,-38.3335,0</coordinates></Point>
+    </Placemark>
+
+    <Placemark>
+      <name>🪜 Gibson Steps</name>
+      <description><![CDATA[
+        <b>Type:</b> Attraction — 45 min stay<br/>
+        <b>Distance:</b> 95km from Colac (1h 15min drive)<br/>
+        <b>Tip:</b> Check tide times! The beach is only accessible at low-to-mid tide.<br/>
+        <b>Comments:</b> Stunning cliff staircase down to the beach. You can see the 12 Apostles from below. Absolutely worth the walk down.
+      ]]></description>
+      <styleUrl>#attraction</styleUrl>
+      <Point><coordinates>143.1117,-38.6717,0</coordinates></Point>
+    </Placemark>
+
+    <Placemark>
+      <name>⚡ Tesla Supercharger Port Campbell</name>
+      <description><![CDATA[
+        <b>Type:</b> Charging Stop — 30 min<br/>
+        <b>Address:</b> 18 Tregea St, Port Campbell VIC 3269<br/>
+        <b>Charger:</b> Tesla Supercharger V2 (150 kW) · 4 stalls<br/>
+        <b>Tip:</b> Grab fish &amp; chips while charging. Small town charger.<br/>
+        <b>Comments:</b> V2 charger so slightly slower than V3. Good fish and chip shops in the town centre.
+      ]]></description>
+      <styleUrl>#charge</styleUrl>
+      <Point><coordinates>143.0186,-38.6186,0</coordinates></Point>
+    </Placemark>
+
+    <Placemark>
+      <name>🌉 London Bridge</name>
+      <description><![CDATA[
+        <b>Type:</b> Attraction — 30 min stay<br/>
+        <b>Distance:</b> 27km from Port Campbell (22 min drive)<br/>
+        <b>Tip:</b> Sunset here is incredible if timing works out.<br/>
+        <b>Comments:</b> Famous rock formation that collapsed in 1990 stranding two tourists! Great viewing platform. Try to time for golden hour.
+      ]]></description>
+      <styleUrl>#attraction</styleUrl>
+      <Point><coordinates>142.9083,-38.6322,0</coordinates></Point>
+    </Placemark>
+
+    <Placemark>
+      <name>🌙 Innova Motel, Warrnambool (SLEEP)</name>
+      <description><![CDATA[
+        <b>Type:</b> Overnight Stay<br/>
+        <b>Address:</b> Innova Motel, Warrnambool VIC 3280<br/>
+        <b>Tip:</b> Charge at Warrnambool Supercharger in the morning before heading to Mt Gambier.<br/>
+        <b>Comments:</b> No charger at motel. Must charge at Warrnambool Supercharger first thing in the morning — the Mt Gambier leg is 270km with no charger.
+      ]]></description>
+      <styleUrl>#sleep</styleUrl>
+      <Point><coordinates>142.4867,-38.3817,0</coordinates></Point>
+    </Placemark>
+  </Folder>
+
+  <!-- Day 3 -->
+  <Folder>
+    <name>Day 3 — Sat 5 Apr: Warrnambool → Coonawarra</name>
+    <Placemark>
+      <name>⚡ Tesla Supercharger Warrnambool</name>
+      <description><![CDATA[
+        <b>Type:</b> Charging Stop — 50 min<br/>
+        <b>Address:</b> 21-23 Gateway Rd, Warrnambool VIC 3280<br/>
+        <b>Charger:</b> Tesla Supercharger V3 (250 kW) · 6 stalls<br/>
+        <b>Tip:</b> CHARGE HIGH! Drive to Mt Gambier is ~270km with no Supercharger in between.<br/>
+        <b>Comments:</b> CRITICAL STOP. Charge as high as possible — ideally 100%. The 270km to Mt Gambier is the longest stretch without a charger on this trip.
+      ]]></description>
+      <styleUrl>#charge</styleUrl>
+      <Point><coordinates>142.5033,-38.3667,0</coordinates></Point>
+    </Placemark>
+
+    <Placemark>
+      <name>🏔️ Mount Gambier — Blue Lake</name>
+      <description><![CDATA[
+        <b>Type:</b> Attraction — 1.5 hour stay<br/>
+        <b>Distance:</b> 270km from Warrnambool (3h drive)<br/>
+        <b>Tip:</b> Also visit Umpherston Sinkhole (free entry) — a sunken garden.<br/>
+        <b>Comments:</b> The Blue Lake is mesmerising — most vivid blue between Nov–Mar. The Umpherston Sinkhole is a beautiful sunken garden, free to visit, don't miss it.
+      ]]></description>
+      <styleUrl>#attraction</styleUrl>
+      <Point><coordinates>140.7667,-37.8333,0</coordinates></Point>
+    </Placemark>
+
+    <Placemark>
+      <name>⚡ Tesla Supercharger Mount Gambier</name>
+      <description><![CDATA[
+        <b>Type:</b> Charging Stop — 35 min<br/>
+        <b>Address:</b> 1-3 Ramsay Ave, Mount Gambier SA 5290<br/>
+        <b>Charger:</b> Tesla Supercharger V3 (250 kW) · 6 stalls<br/>
+        <b>Tip:</b> Grab lunch at a nearby restaurant while charging.<br/>
+        <b>Comments:</b> Convenient location near the town centre. Plenty of food options nearby.
+      ]]></description>
+      <styleUrl>#charge</styleUrl>
+      <Point><coordinates>140.7805,-37.8276,0</coordinates></Point>
+    </Placemark>
+
+    <Placemark>
+      <name>🌙 Coonawarra Bush Holiday Park (SLEEP)</name>
+      <description><![CDATA[
+        <b>Type:</b> Overnight Stay<br/>
+        <b>Address:</b> Coonawarra Bush Holiday Park, Coonawarra SA<br/>
+        <b>Distance:</b> 62km from Mt Gambier (45 min drive)<br/>
+        <b>Tip:</b> Stop at Penola for wine tasting on the way!<br/>
+        <b>Comments:</b> Heart of the Coonawarra wine region. If time permits, stop at Penola for a cellar door tasting. Beautiful bush setting. No EV charger.
+      ]]></description>
+      <styleUrl>#sleep</styleUrl>
+      <Point><coordinates>140.8333,-37.2917,0</coordinates></Point>
+    </Placemark>
+  </Folder>
+
+  <!-- Day 4 -->
+  <Folder>
+    <name>Day 4 — Sun 6 Apr: Naracoorte → Pink Lake → Home</name>
+    <Placemark>
+      <name>🦴 Naracoorte Caves National Park</name>
+      <description><![CDATA[
+        <b>Type:</b> Attraction — 1.5 hour stay<br/>
+        <b>Distance:</b> 18km from Coonawarra (15 min drive)<br/>
+        <b>Address:</b> Naracoorte Caves National Park, SA 5271<br/>
+        <b>Tip:</b> Book Victoria Fossil Cave or Alexandra Cave tour. Allow 60–90 mins.<br/>
+        <b>Comments:</b> UNESCO World Heritage site with 500,000-year-old fossils. Book cave tour online in advance — they can sell out. The Victoria Fossil Cave is the highlight.
+      ]]></description>
+      <styleUrl>#attraction</styleUrl>
+      <Point><coordinates>140.8717,-36.9567,0</coordinates></Point>
+    </Placemark>
+
+    <Placemark>
+      <name>⚡ Tesla Supercharger Bordertown</name>
+      <description><![CDATA[
+        <b>Type:</b> Charging Stop — 40 min<br/>
+        <b>Address:</b> 2 Dukes Hwy, Bordertown SA 5268<br/>
+        <b>Charger:</b> Tesla Supercharger V3 (250 kW) · 6 stalls<br/>
+        <b>Tip:</b> Good rest stop with nearby amenities. Stock up on snacks.<br/>
+        <b>Comments:</b> Border town between SA and VIC. Good spot to stretch legs and grab supplies for the drive ahead.
+      ]]></description>
+      <styleUrl>#charge</styleUrl>
+      <Point><coordinates>140.7700,-36.3100,0</coordinates></Point>
+    </Placemark>
+
+    <Placemark>
+      <name>⚡ Tesla Supercharger Horsham</name>
+      <description><![CDATA[
+        <b>Type:</b> Charging Stop — 25 min<br/>
+        <b>Address:</b> 36 Darlot St, Horsham VIC 3400<br/>
+        <b>Charger:</b> Tesla Supercharger V3 (250 kW) · 6 stalls<br/>
+        <b>Tip:</b> Quick charge. Good snack break town.<br/>
+        <b>Comments:</b> Quick top-up before the Pink Lake detour. Horsham has cafes and bakeries nearby.
+      ]]></description>
+      <styleUrl>#charge</styleUrl>
+      <Point><coordinates>142.2000,-36.7150,0</coordinates></Point>
+    </Placemark>
+
+    <Placemark>
+      <name>🩷 Pink Lake, Dimboola</name>
+      <description><![CDATA[
+        <b>Type:</b> Attraction — 40 min stay<br/>
+        <b>Distance:</b> 35km from Horsham (25 min drive)<br/>
+        <b>Address:</b> Pink Lake, Dimboola VIC 3414<br/>
+        <b>Tip:</b> Most pink on hot, sunny days. Walk around for different angles.<br/>
+        <b>Comments:</b> The lake turns pink from algae and salt concentrations. Best colour on warm sunny days — overcast days may look less vivid. Walk around for the best photo angles.
+      ]]></description>
+      <styleUrl>#attraction</styleUrl>
+      <Point><coordinates>142.0200,-36.4600,0</coordinates></Point>
+    </Placemark>
+
+    <Placemark>
+      <name>⚡ Tesla Supercharger Ballarat</name>
+      <description><![CDATA[
+        <b>Type:</b> Charging Stop — 25 min<br/>
+        <b>Address:</b> 333 Gillies St North, Ballarat VIC 3355<br/>
+        <b>Charger:</b> Tesla Supercharger V3 (250 kW) · 8 stalls<br/>
+        <b>Tip:</b> Last charge before Melbourne. 20 min is enough to get home.<br/>
+        <b>Comments:</b> Final charge stop. Just need enough to get home to Melbourne (~115km). Quick stop and you're on the home stretch.
+      ]]></description>
+      <styleUrl>#charge</styleUrl>
+      <Point><coordinates>143.8472,-37.5537,0</coordinates></Point>
+    </Placemark>
+
+    <Placemark>
+      <name>🏠 52 Park Street, Melbourne (HOME)</name>
+      <description><![CDATA[
+        <b>Type:</b> Trip End<br/>
+        <b>Address:</b> 52 Park Street, South Melbourne VIC 3205<br/>
+        <b>Distance:</b> 115km from Ballarat (1h 25min drive)<br/>
+        <b>Comments:</b> Welcome home! Total trip: ~1,500 km over 4 incredible days. 🎉
+      ]]></description>
+      <styleUrl>#start</styleUrl>
+      <Point><coordinates>144.9631,-37.8136,0</coordinates></Point>
+    </Placemark>
+  </Folder>
+
+</Document>
+</kml>
