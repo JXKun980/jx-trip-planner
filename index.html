@@ -176,27 +176,35 @@
       return {dist,drv,stay,chrg,cs};
     }
 
-    // ── Live Charger Availability (Open Charge Map API) ──
+    // ── Charger Status (Open Charge Map API with fallback to local data) ──
     const OCM_API = "https://api.openchargemap.org/v3/poi/";
-    const OCM_KEY = "73b7ccab-e1dc-4a99-8e01-bdbef2e4fc68"; // free community key
 
     async function fetchChargerStatus(lat, lng) {
       try {
-        const url = `${OCM_API}?output=json&latitude=${lat}&longitude=${lng}&distance=2&distanceunit=KM&operatorid=23&maxresults=1&key=${OCM_KEY}`;
+        // Search wider radius, no operator filter, to maximize chance of finding the station
+        const url = `${OCM_API}?output=json&latitude=${lat}&longitude=${lng}&distance=5&distanceunit=KM&maxresults=5&compact=true&verbose=false`;
         const res = await fetch(url);
         if (!res.ok) return null;
         const data = await res.json();
         if (!data || data.length === 0) return null;
-        const site = data[0];
+        // Try to find a Tesla station first, otherwise take the closest
+        const tesla = data.find(s => {
+          const op = s.OperatorInfo?.Title || s.AddressInfo?.Title || "";
+          return op.toLowerCase().includes("tesla");
+        });
+        const site = tesla || data[0];
         const conns = site.Connections || [];
         const totalPoints = conns.reduce((s, c) => s + (c.Quantity || 1), 0);
         const status = site.StatusType?.Title || "Unknown";
         const verified = site.DateLastVerified || site.DateLastStatusUpdate;
         const addr = site.AddressInfo;
+        const opName = site.OperatorInfo?.Title || "";
         return {
-          title: addr?.Title || "Tesla Supercharger",
+          title: addr?.Title || "Charging Station",
           status,
           totalPoints,
+          isTesla: opName.toLowerCase().includes("tesla"),
+          operator: opName,
           connections: conns.map(c => ({
             type: c.ConnectionType?.Title || "Unknown",
             kw: c.PowerKW || 0,
@@ -204,66 +212,64 @@
             status: c.StatusType?.Title || status,
           })),
           lastVerified: verified ? new Date(verified).toLocaleDateString() : null,
-          lat: addr?.Latitude,
-          lng: addr?.Longitude,
         };
       } catch { return null; }
     }
 
-    function ChargerAvailability({ lat, lng, stopId }) {
-      const [data, setData] = useState(null);
+    function ChargerAvailability({ lat, lng, stopId, chargeInfo }) {
+      const [ocmData, setOcmData] = useState(null);
       const [loading, setLoading] = useState(true);
       const [fetchedAt, setFetchedAt] = useState(null);
+      const [ocmFailed, setOcmFailed] = useState(false);
 
       const doFetch = async () => {
         setLoading(true);
         const result = await fetchChargerStatus(lat, lng);
-        setData(result);
+        setOcmData(result);
+        setOcmFailed(!result);
         setFetchedAt(new Date());
         setLoading(false);
       };
 
       React.useEffect(() => { doFetch(); }, []);
 
-      if (loading && !data) return (
-        <div className="px-3.5 py-1.5 border-t border-[#2a2a2a] bg-[#0a0a0a]">
-          <span className="text-[10px] text-gray-500">⏳ Loading charger data...</span>
-        </div>
-      );
-
-      if (!data) return (
-        <div className="px-3.5 py-1.5 border-t border-[#2a2a2a] bg-[#0a0a0a] flex items-center gap-2">
-          <span className="text-[10px] text-gray-500">⚠️ Could not fetch charger data</span>
-          <button onClick={doFetch} className="text-[10px] text-blue-400 hover:text-blue-300">🔄</button>
-        </div>
-      );
-
-      const statusColor = data.status === "Operational" ? "#22c55e" : data.status === "Planned" ? "#f59e0b" : "#ef4444";
+      // Merge: prefer OCM live data, fall back to our hardcoded chargeInfo
+      const hasOcm = ocmData && ocmData.isTesla;
+      const status = hasOcm ? ocmData.status : "Operational";
+      const totalPoints = hasOcm ? ocmData.totalPoints : chargeInfo.stalls;
+      const connections = hasOcm && ocmData.connections.length > 0
+        ? ocmData.connections
+        : [{ type: "CCS2 / Tesla", kw: chargeInfo.kw, qty: chargeInfo.stalls, status: "Operational" }];
+      const source = hasOcm ? "Open Charge Map" : "Local data";
+      const statusColor = status === "Operational" ? "#22c55e" : status === "Planned" ? "#f59e0b" : "#ef4444";
 
       return (
         <div className="px-3.5 py-2 border-t border-[#2a2a2a] bg-[#0a0a0a]">
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-[10px] font-semibold text-gray-300">📡 Live Charger Status</span>
+            <span className="text-[10px] font-semibold text-gray-300">📡 Charger Info</span>
             <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{background: statusColor + "22", color: statusColor, border: `1px solid ${statusColor}44`}}>
-              {data.status}
+              {status}
             </span>
             <button onClick={doFetch} disabled={loading}
-              className={`ml-auto text-[10px] text-blue-400 hover:text-blue-300 transition-colors ${loading ? "animate-spin" : ""}`}
-              title="Refresh data">
+              className={`ml-auto text-[10px] transition-colors ${loading ? "animate-spin text-gray-500" : "text-blue-400 hover:text-blue-300"}`}
+              title="Refresh from Open Charge Map">
               🔄
             </button>
           </div>
           <div className="flex items-center gap-3 flex-wrap text-[10px]">
-            <span className="text-gray-400">⚡ {data.totalPoints} charging points</span>
-            {data.connections.map((c, i) => (
-              <span key={i} className="text-gray-500">
-                {c.qty}× {c.type} {c.kw > 0 ? `(${c.kw}kW)` : ""}
+            {connections.map((c, i) => (
+              <span key={i} className="text-gray-400">
+                ⚡ {c.qty}× {c.type} {c.kw > 0 ? `(${c.kw}kW)` : ""}
               </span>
             ))}
           </div>
           <div className="flex items-center gap-2 mt-1 text-[9px] text-gray-600">
-            {fetchedAt && <span>Fetched: {fetchedAt.toLocaleTimeString()}</span>}
-            {data.lastVerified && <span>· Last verified: {data.lastVerified}</span>}
+            <span>Source: {source}</span>
+            {fetchedAt && <span>· {loading ? "Refreshing..." : `Updated: ${fetchedAt.toLocaleTimeString()}`}</span>}
+            {hasOcm && ocmData.lastVerified && <span>· Verified: {ocmData.lastVerified}</span>}
+          </div>
+          <div className="mt-1 text-[9px] text-gray-600 italic">
+            💡 For live stall availability (e.g. 4/6), check the Tesla app or Google Maps.
           </div>
         </div>
       );
@@ -412,7 +418,7 @@
                     <div className="flex justify-between text-[10px] text-gray-600 mt-0.5"><span>{fmt(stop.min)}</span><span>{fmt(stop.max)}</span></div>
                   </div>
                 )}
-                {isCh && <ChargerAvailability lat={stop.lat} lng={stop.lng} stopId={stop.id} />}
+                {isCh && <ChargerAvailability lat={stop.lat} lng={stop.lng} stopId={stop.id} chargeInfo={stop.charge} />}
                 <CommentsSection stopId={stop.id} />
                 {stop.tip && <div className="px-3.5 py-1.5 border-t border-[#2a2a2a] bg-[#0a0a0a]"><p className="text-[10px] text-yellow-500/80">💡 {stop.tip}</p></div>}
               </div>
