@@ -341,7 +341,27 @@
       );
     }
 
-    function StopCard({stop, battArr, battDep, arrTime, onChange, color, homeBattery, onHomeBatteryChange}) {
+    // Detect if a name/location looks like a Tesla Supercharger
+    function isChargerName(name) {
+      const n = (name || "").toLowerCase();
+      return n.includes("supercharger") || n.includes("tesla charger") || n.includes("charging station");
+    }
+
+    function makeChargeDefaults() {
+      return { type: "Tesla Supercharger V3", stalls: 6, kw: 250 };
+    }
+
+    function AddStopButton({ onClick }) {
+      return (
+        <div className="flex justify-center py-1">
+          <button onClick={onClick}
+            className="w-6 h-6 rounded-full bg-[#2a2a2a] hover:bg-blue-500/30 border border-[#3a3a3a] hover:border-blue-500/50 text-gray-500 hover:text-blue-400 text-sm font-bold flex items-center justify-center transition-all"
+            title="Add stop here">+</button>
+        </div>
+      );
+    }
+
+    function StopCard({stop, battArr, battDep, arrTime, onChange, color, homeBattery, onHomeBatteryChange, editMode, onDelete, onEditField}) {
       const isCh=stop.type==="charge", isSl=stop.type==="sleep", isSt=stop.type==="start";
       const adj = !isSt && !isSl;
       const dotBg = isCh?"#22c55e":isSl?"#6366f1":isSt?color:"#374151";
@@ -350,17 +370,14 @@
         <div className="flex gap-0 pb-5">
           {/* Left column: time + timeline + duration control */}
           <div className="flex flex-col items-center w-20 shrink-0 pt-1">
-            {/* Arrival time */}
             <div className="text-center mb-1.5">
               <div className="text-[9px] text-gray-500 uppercase tracking-wider">Arrive</div>
               <div className="text-[11px] font-bold text-white">{arrTime}</div>
             </div>
-            {/* Dot */}
             <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] shrink-0 z-10 ${isCh?"charge-pulse":""}`}
                  style={{background:dotBg, border:`2px solid ${dotBorder}`}}>
               {stop.emoji}
             </div>
-            {/* Duration control along timeline */}
             {adj ? (
               <div className="flex flex-col items-center flex-1 py-1">
                 <div className="w-[2px] flex-1" style={{background:`${color}44`}} />
@@ -381,48 +398,128 @@
             )}
           </div>
           {/* Right: card */}
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 relative">
+            {/* Delete button in edit mode */}
+            {editMode && onDelete && (
+              <button onClick={()=>onDelete(stop.id)}
+                className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 hover:bg-red-400 text-white text-[10px] font-bold flex items-center justify-center z-20 shadow transition-colors"
+                title="Remove stop">✕</button>
+            )}
             <div className="card-glow rounded-xl bg-[#141414] border border-[#2a2a2a] overflow-hidden transition-all hover:border-[#3a3a3a]">
               <div className="flex">
                 <div className="flex-1 min-w-0">
                   <div className="p-3.5 pb-2.5">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-base">{stop.emoji}</span>
-                      <h3 className="font-semibold text-white text-sm">{stop.name}</h3>
-                    </div>
-                    <p className="text-[11px] text-gray-400 leading-relaxed">{stop.desc}</p>
-                    {isSt && homeBattery !== undefined && onHomeBatteryChange && stop.id === "d1-start" && (
-                      <div className="mt-2 flex items-center gap-2 bg-[#0d0d0d] rounded-lg px-3 py-2 border border-[#2a2a2a]">
-                        <span className="text-[11px] text-gray-400">🔋 Starting battery:</span>
-                        <input type="range" min={20} max={100} value={homeBattery} onChange={e=>onHomeBatteryChange(+e.target.value)}
-                          className="flex-1 h-1" style={{background:`linear-gradient(to right, #22c55e ${homeBattery}%, #2a2a2a ${homeBattery}%)`}} />
-                        <span className="text-sm font-bold text-green-400 w-10 text-right">{homeBattery}%</span>
+                    {editMode ? (
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <select value={stop.type} onChange={e => {
+                            const newType = e.target.value;
+                            const updates = { type: newType };
+                            if (newType === "charge" && !stop.charge) {
+                              updates.charge = makeChargeDefaults();
+                              updates.emoji = "⚡";
+                            } else if (newType !== "charge") {
+                              updates.charge = undefined;
+                              if (newType === "attraction") updates.emoji = "📍";
+                              if (newType === "sleep") updates.emoji = "🌙";
+                              if (newType === "start") updates.emoji = "🌅";
+                            }
+                            onEditField(stop.id, updates);
+                          }} className="bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1.5 py-0.5 text-[10px] text-white">
+                            <option value="attraction">📍 Attraction</option>
+                            <option value="charge">⚡ Charger</option>
+                            <option value="sleep">🌙 Sleep</option>
+                            <option value="start">🌅 Start</option>
+                          </select>
+                          <input value={stop.emoji} onChange={e=>onEditField(stop.id,{emoji:e.target.value})}
+                            className="w-8 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1 py-0.5 text-center text-sm" />
+                        </div>
+                        <input value={stop.name} onChange={e => {
+                          const name = e.target.value;
+                          const updates = { name };
+                          if (isChargerName(name) && stop.type !== "charge") {
+                            updates.type = "charge";
+                            updates.charge = makeChargeDefaults();
+                            updates.emoji = "⚡";
+                            updates.poi = name.replace(/\s+/g, "+");
+                          }
+                          onEditField(stop.id, updates);
+                        }} placeholder="Stop name"
+                          className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded px-2 py-1 text-sm text-white font-semibold" />
+                        <textarea value={stop.desc} onChange={e=>onEditField(stop.id,{desc:e.target.value})} rows={2} placeholder="Description"
+                          className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded px-2 py-1 text-[11px] text-gray-400 resize-none" />
+                        <div className="flex gap-2 flex-wrap">
+                          <input value={stop.address||""} onChange={e=>onEditField(stop.id,{address:e.target.value})} placeholder="Address"
+                            className="flex-1 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-2 py-0.5 text-[10px] text-gray-400 min-w-[120px]" />
+                          <input value={stop.mq||""} onChange={e=>onEditField(stop.id,{mq:e.target.value})} placeholder="Maps query (e.g. Apollo+Bay+VIC)"
+                            className="flex-1 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-2 py-0.5 text-[10px] text-gray-400 min-w-[120px]" />
+                        </div>
+                        <div className="flex gap-2 flex-wrap text-[10px]">
+                          <label className="flex items-center gap-1 text-gray-500">Dist(km) <input type="number" value={stop.dist} onChange={e=>onEditField(stop.id,{dist:+e.target.value})}
+                            className="w-12 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1 py-0.5 text-white" /></label>
+                          <label className="flex items-center gap-1 text-gray-500">Drive(min) <input type="number" value={stop.drive} onChange={e=>onEditField(stop.id,{drive:+e.target.value})}
+                            className="w-12 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1 py-0.5 text-white" /></label>
+                          <label className="flex items-center gap-1 text-gray-500">Batt% used <input type="number" value={stop.batt} onChange={e=>onEditField(stop.id,{batt:+e.target.value})}
+                            className="w-12 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1 py-0.5 text-white" /></label>
+                        </div>
+                        {stop.type === "charge" && stop.charge && (
+                          <div className="flex gap-2 flex-wrap text-[10px] bg-green-500/5 rounded p-1.5 border border-green-500/10">
+                            <label className="flex items-center gap-1 text-gray-500">Stalls <input type="number" value={stop.charge.stalls} onChange={e=>onEditField(stop.id,{charge:{...stop.charge,stalls:+e.target.value}})}
+                              className="w-10 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1 py-0.5 text-green-400" /></label>
+                            <label className="flex items-center gap-1 text-gray-500">kW <input type="number" value={stop.charge.kw} onChange={e=>onEditField(stop.id,{charge:{...stop.charge,kw:+e.target.value}})}
+                              className="w-12 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1 py-0.5 text-green-400" /></label>
+                            <label className="flex items-center gap-1 text-gray-500">Type <input value={stop.charge.type} onChange={e=>onEditField(stop.id,{charge:{...stop.charge,type:e.target.value}})}
+                              className="w-28 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1 py-0.5 text-green-400" /></label>
+                          </div>
+                        )}
+                        <input value={stop.tip||""} onChange={e=>onEditField(stop.id,{tip:e.target.value})} placeholder="💡 Tip"
+                          className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded px-2 py-0.5 text-[10px] text-yellow-500/80" />
                       </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-base">{stop.emoji}</span>
+                          <h3 className="font-semibold text-white text-sm">{stop.name}</h3>
+                        </div>
+                        <p className="text-[11px] text-gray-400 leading-relaxed">{stop.desc}</p>
+                        {isSt && homeBattery !== undefined && onHomeBatteryChange && stop.id === "d1-start" && (
+                          <div className="mt-2 flex items-center gap-2 bg-[#0d0d0d] rounded-lg px-3 py-2 border border-[#2a2a2a]">
+                            <span className="text-[11px] text-gray-400">🔋 Starting battery:</span>
+                            <input type="range" min={20} max={100} value={homeBattery} onChange={e=>onHomeBatteryChange(+e.target.value)}
+                              className="flex-1 h-1" style={{background:`linear-gradient(to right, #22c55e ${homeBattery}%, #2a2a2a ${homeBattery}%)`}} />
+                            <span className="text-sm font-bold text-green-400 w-10 text-right">{homeBattery}%</span>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
-                  <div className="px-3.5 py-1.5 bg-[#0d0d0d] flex items-center gap-3 flex-wrap text-[11px]">
-                    {stop.dist>0 && <span className="text-gray-400">🚗 {stop.dist}km · {fmt(stop.drive)}</span>}
-                    {!isSt && <span className="text-gray-400">🔋 <BatteryGauge pct={battArr} /></span>}
-                    {isCh && stop.charge && (
-                      <span className="ml-auto text-green-400 text-[10px] font-medium px-2 py-0.5 rounded-full bg-green-400/10 border border-green-400/20">
-                        {stop.charge.type} ({stop.charge.kw}kW) → {Math.round(battDep)}%
-                      </span>
-                    )}
-                  </div>
-                  {isCh && stop.charge && (
-                    <div className="px-3.5 py-2 bg-green-500/5 border-t border-green-500/10">
-                      <div className="flex items-center gap-3 flex-wrap text-[11px]">
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{background:"#22c55e22",color:"#22c55e",border:"1px solid #22c55e44"}}>Operational</span>
-                        <span><span className="text-gray-500">Stalls: </span><span className="text-green-400">{stop.charge.stalls}</span></span>
-                        <span><span className="text-gray-500">Charger: </span><span className="text-green-400">{stop.charge.kw} kW</span></span>
-                        <span><span className="text-gray-500">+{Math.round(battDep - battArr)}% </span><span className="text-gray-600">in {fmt(stop.stay)}</span></span>
-                        <span><span className="text-gray-500">Depart: </span><BatteryGauge pct={battDep} /></span>
+                  {!editMode && (
+                    <>
+                      <div className="px-3.5 py-1.5 bg-[#0d0d0d] flex items-center gap-3 flex-wrap text-[11px]">
+                        {stop.dist>0 && <span className="text-gray-400">🚗 {stop.dist}km · {fmt(stop.drive)}</span>}
+                        {!isSt && <span className="text-gray-400">🔋 <BatteryGauge pct={battArr} /></span>}
+                        {isCh && stop.charge && (
+                          <span className="ml-auto text-green-400 text-[10px] font-medium px-2 py-0.5 rounded-full bg-green-400/10 border border-green-400/20">
+                            {stop.charge.type} ({stop.charge.kw}kW) → {Math.round(battDep)}%
+                          </span>
+                        )}
                       </div>
-                      {stop.address && <div className="mt-1 text-[10px] text-gray-500">📍 {stop.address}</div>}
-                    </div>
+                      {isCh && stop.charge && (
+                        <div className="px-3.5 py-2 bg-green-500/5 border-t border-green-500/10">
+                          <div className="flex items-center gap-3 flex-wrap text-[11px]">
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{background:"#22c55e22",color:"#22c55e",border:"1px solid #22c55e44"}}>Operational</span>
+                            <span><span className="text-gray-500">Stalls: </span><span className="text-green-400">{stop.charge.stalls}</span></span>
+                            <span><span className="text-gray-500">Charger: </span><span className="text-green-400">{stop.charge.kw} kW</span></span>
+                            <span><span className="text-gray-500">+{Math.round(battDep - battArr)}% </span><span className="text-gray-600">in {fmt(stop.stay)}</span></span>
+                            <span><span className="text-gray-500">Depart: </span><BatteryGauge pct={battDep} /></span>
+                          </div>
+                          {stop.address && <div className="mt-1 text-[10px] text-gray-500">📍 {stop.address}</div>}
+                        </div>
+                      )}
+                      <CommentsSection stopId={stop.id} />
+                      {stop.tip && <div className="px-3.5 py-1.5 border-t border-[#2a2a2a] bg-[#0a0a0a]"><p className="text-[10px] text-yellow-500/80">💡 {stop.tip}</p></div>}
+                    </>
                   )}
-                  <CommentsSection stopId={stop.id} />
-                  {stop.tip && <div className="px-3.5 py-1.5 border-t border-[#2a2a2a] bg-[#0a0a0a]"><p className="text-[10px] text-yellow-500/80">💡 {stop.tip}</p></div>}
                 </div>
                 {/* Right: Google Maps link */}
                 <a href={mapLink(stop)} target="_blank" rel="noopener noreferrer"
@@ -440,7 +537,7 @@
       );
     }
 
-    function DaySection({day, onChange, startH, onStartH, homeBattery, onHomeBatteryChange}) {
+    function DaySection({day, onChange, startH, onStartH, homeBattery, onHomeBatteryChange, editMode, onDelete, onEditField, onAddStop}) {
       const [open, setOpen] = useState(true);
       const st = dayStats(day.stops);
       const levels = useMemo(() => {
@@ -496,7 +593,15 @@
               Open route in Maps ↗
             </a>
           </div>
-          {open && <div className="ml-2">{day.stops.map((s,i)=><StopCard key={s.id} stop={s} battArr={levels[i].arr} battDep={levels[i].dep} arrTime={levels[i].t} onChange={onChange} color={day.color} homeBattery={homeBattery} onHomeBatteryChange={onHomeBatteryChange} />)}</div>}
+          {open && <div className="ml-2">
+            {day.stops.map((s,i)=>(
+              <React.Fragment key={s.id}>
+                {editMode && <AddStopButton onClick={()=>onAddStop(day.day, i)} />}
+                <StopCard stop={s} battArr={levels[i].arr} battDep={levels[i].dep} arrTime={levels[i].t} onChange={onChange} color={day.color} homeBattery={homeBattery} onHomeBatteryChange={onHomeBatteryChange} editMode={editMode} onDelete={onDelete} onEditField={onEditField} />
+              </React.Fragment>
+            ))}
+            {editMode && <AddStopButton onClick={()=>onAddStop(day.day, day.stops.length)} />}
+          </div>}
         </div>
       );
     }
@@ -514,9 +619,15 @@
     }
 
     function App() {
-      const [days, setDays] = useState(initialDays);
+      const [days, setDays] = useState(() => {
+        try { const s = localStorage.getItem("tripDays"); return s ? JSON.parse(s) : initialDays; } catch { return initialDays; }
+      });
       const [startHours, setStartHours] = useState([8,7,7,6]);
       const [homeBattery, setHomeBattery] = useState(100);
+      const [editMode, setEditMode] = useState(false);
+
+      // Persist days to localStorage
+      React.useEffect(() => { localStorage.setItem("tripDays", JSON.stringify(days)); }, [days]);
 
       // Chain battery across days: each day's startBattery = previous day's ending battery
       const daysWithBattery = useMemo(() => {
@@ -534,6 +645,27 @@
 
       const onChange = (id, val) => setDays(p=>p.map(d=>({...d,stops:d.stops.map(s=>s.id===id?{...s,stay:val}:s)})));
       const onStartH = (i, h) => setStartHours(p=>{const n=[...p];n[i]=h;return n;});
+
+      const onDelete = (id) => setDays(p=>p.map(d=>({...d,stops:d.stops.filter(s=>s.id!==id)})));
+
+      const onEditField = (id, updates) => setDays(p=>p.map(d=>({...d,stops:d.stops.map(s=>s.id===id?{...s,...updates}:s)})));
+
+      const onAddStop = (dayNum, index) => {
+        const newStop = {
+          id: `custom-${Date.now()}`, name: "New Stop", type: "attraction",
+          desc: "Describe this stop...", stay: 30, min: 10, max: 120,
+          dist: 0, drive: 0, batt: 0, emoji: "📍",
+          lat: -37.8, lng: 144.0, mq: "Melbourne+VIC",
+        };
+        setDays(p => p.map(d => {
+          if (d.day !== dayNum) return d;
+          const stops = [...d.stops];
+          stops.splice(index, 0, newStop);
+          return { ...d, stops };
+        }));
+      };
+
+      const onResetTrip = () => { localStorage.removeItem("tripDays"); setDays(initialDays); };
 
       const totals = useMemo(()=>{
         let d=0,dr=0,s=0,c=0,cs=0;
@@ -572,9 +704,23 @@
             </div>
           </header>
 
+          {/* Edit toggle */}
+          <div className="max-w-4xl mx-auto px-4 pt-6 pb-2 flex items-center gap-2">
+            <button onClick={()=>setEditMode(!editMode)}
+              className={`px-4 py-2 rounded-lg text-[11px] font-bold transition-all border ${editMode ? "bg-blue-500/20 border-blue-500/50 text-blue-400" : "bg-[#141414] border-[#2a2a2a] text-gray-400 hover:text-white"}`}>
+              {editMode ? "✓ Done Editing" : "✏️ Edit Trip"}
+            </button>
+            {editMode && (
+              <button onClick={onResetTrip}
+                className="px-3 py-2 rounded-lg text-[11px] font-bold bg-[#141414] border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-all">
+                ↺ Reset to Default
+              </button>
+            )}
+          </div>
+
           {/* Days */}
-          <div className="max-w-4xl mx-auto px-4 py-6">
-            {daysWithBattery.map((d,i)=><DaySection key={d.day} day={d} onChange={onChange} startH={startHours[i]} onStartH={h=>onStartH(i,h)} homeBattery={homeBattery} onHomeBatteryChange={setHomeBattery} />)}
+          <div className="max-w-4xl mx-auto px-4 py-4">
+            {daysWithBattery.map((d,i)=><DaySection key={d.day} day={d} onChange={onChange} startH={startHours[i]} onStartH={h=>onStartH(i,h)} homeBattery={homeBattery} onHomeBatteryChange={setHomeBattery} editMode={editMode} onDelete={onDelete} onEditField={onEditField} onAddStop={onAddStop} />)}
           </div>
 
           {/* Charging summary */}
