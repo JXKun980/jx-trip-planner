@@ -353,15 +353,46 @@
 
     function AddStopButton({ onClick }) {
       return (
-        <div className="flex justify-center py-1">
-          <button onClick={onClick}
-            className="w-6 h-6 rounded-full bg-[#2a2a2a] hover:bg-blue-500/30 border border-[#3a3a3a] hover:border-blue-500/50 text-gray-500 hover:text-blue-400 text-sm font-bold flex items-center justify-center transition-all"
-            title="Add stop here">+</button>
+        <div className="flex gap-0 py-0.5">
+          <div className="w-20 shrink-0 flex justify-center">
+            <div className="w-[2px] h-full bg-[#2a2a2a]" />
+          </div>
+          <div className="flex-1 flex justify-center">
+            <button onClick={onClick}
+              className="w-6 h-6 rounded-full bg-[#2a2a2a] hover:bg-blue-500/30 border border-dashed border-[#3a3a3a] hover:border-blue-500/50 text-gray-500 hover:text-blue-400 text-sm font-bold flex items-center justify-center transition-all"
+              title="Add stop here">+</button>
+          </div>
         </div>
       );
     }
 
-    function StopCard({stop, battArr, battDep, arrTime, onChange, color, homeBattery, onHomeBatteryChange, editMode, onDelete, onEditField}) {
+    // Haversine distance in km
+    function haversine(lat1, lng1, lat2, lng2) {
+      const R = 6371, toR = Math.PI / 180;
+      const dLat = (lat2 - lat1) * toR, dLng = (lng2 - lng1) * toR;
+      const a = Math.sin(dLat/2)**2 + Math.cos(lat1*toR) * Math.cos(lat2*toR) * Math.sin(dLng/2)**2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    // Estimate driving stats from straight-line distance
+    function estimateDriveStats(straightKm) {
+      const roadKm = Math.round(straightKm * 1.35); // road factor
+      const driveMin = Math.round(roadKm / 80 * 60); // ~80km/h avg
+      const battPct = Math.round(roadKm * 0.18); // ~18% per 100km
+      return { dist: roadKm, drive: driveMin, batt: battPct };
+    }
+
+    // Geocode address via Nominatim, returns {lat, lng} or null
+    async function geocodeAddress(address) {
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`);
+        const data = await res.json();
+        if (data && data.length > 0) return { lat: +data[0].lat, lng: +data[0].lon };
+      } catch {}
+      return null;
+    }
+
+    function StopCard({stop, battArr, battDep, arrTime, onChange, color, homeBattery, onHomeBatteryChange, editMode, onDelete, onEditField, prevStop}) {
       const isCh=stop.type==="charge", isSl=stop.type==="sleep", isSt=stop.type==="start";
       const adj = !isSt && !isSl;
       const dotBg = isCh?"#22c55e":isSl?"#6366f1":isSt?color:"#374151";
@@ -411,56 +442,69 @@
                   <div className="p-3.5 pb-2.5">
                     {editMode ? (
                       <div className="space-y-1.5">
-                        <div className="flex items-center gap-2">
+                        {/* Address on top — most important */}
+                        <div className="relative">
+                          <input value={stop.address||""} onChange={async e => {
+                            const addr = e.target.value;
+                            const updates = { address: addr, mq: addr.replace(/\s+/g, "+") };
+                            // Auto-detect charger
+                            if (isChargerName(addr) && stop.type !== "charge") {
+                              updates.type = "charge"; updates.charge = makeChargeDefaults(); updates.emoji = "⚡";
+                              updates.poi = addr.replace(/\s+/g, "+");
+                            }
+                            onEditField(stop.id, updates);
+                          }} placeholder="📍 Address or location name"
+                            className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg px-3 py-2 text-sm text-white font-medium placeholder-gray-600" />
+                          {prevStop && prevStop.lat && (
+                            <button onClick={async () => {
+                              const geo = await geocodeAddress(stop.address || stop.name);
+                              if (geo) {
+                                const straight = haversine(prevStop.lat, prevStop.lng, geo.lat, geo.lng);
+                                const est = estimateDriveStats(straight);
+                                onEditField(stop.id, { lat: geo.lat, lng: geo.lng, ...est });
+                              }
+                            }} className="absolute right-1.5 top-1.5 px-2 py-1 rounded bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-[9px] font-bold transition-colors"
+                              title="Auto-calculate distance, drive time & battery from this address">⚡ Calc</button>
+                          )}
+                        </div>
+                        {/* Name + type row */}
+                        <div className="flex gap-1.5">
                           <select value={stop.type} onChange={e => {
                             const newType = e.target.value;
                             const updates = { type: newType };
-                            if (newType === "charge" && !stop.charge) {
-                              updates.charge = makeChargeDefaults();
-                              updates.emoji = "⚡";
-                            } else if (newType !== "charge") {
-                              updates.charge = undefined;
-                              if (newType === "attraction") updates.emoji = "📍";
-                              if (newType === "sleep") updates.emoji = "🌙";
-                              if (newType === "start") updates.emoji = "🌅";
-                            }
+                            if (newType === "charge" && !stop.charge) { updates.charge = makeChargeDefaults(); updates.emoji = "⚡"; }
+                            else if (newType !== "charge") { updates.charge = undefined; updates.emoji = newType==="sleep"?"🌙":newType==="start"?"🌅":"📍"; }
                             onEditField(stop.id, updates);
-                          }} className="bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1.5 py-0.5 text-[10px] text-white">
+                          }} className="bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1.5 py-1 text-[10px] text-white shrink-0">
                             <option value="attraction">📍 Attraction</option>
                             <option value="charge">⚡ Charger</option>
                             <option value="sleep">🌙 Sleep</option>
                             <option value="start">🌅 Start</option>
                           </select>
                           <input value={stop.emoji} onChange={e=>onEditField(stop.id,{emoji:e.target.value})}
-                            className="w-8 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1 py-0.5 text-center text-sm" />
+                            className="w-8 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1 py-1 text-center text-sm shrink-0" />
+                          <input value={stop.name} onChange={e => {
+                            const name = e.target.value;
+                            const updates = { name };
+                            if (isChargerName(name) && stop.type !== "charge") {
+                              updates.type = "charge"; updates.charge = makeChargeDefaults(); updates.emoji = "⚡";
+                              updates.poi = name.replace(/\s+/g, "+");
+                            }
+                            onEditField(stop.id, updates);
+                          }} placeholder="Stop name"
+                            className="flex-1 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-2 py-1 text-[11px] text-white font-semibold min-w-0" />
                         </div>
-                        <input value={stop.name} onChange={e => {
-                          const name = e.target.value;
-                          const updates = { name };
-                          if (isChargerName(name) && stop.type !== "charge") {
-                            updates.type = "charge";
-                            updates.charge = makeChargeDefaults();
-                            updates.emoji = "⚡";
-                            updates.poi = name.replace(/\s+/g, "+");
-                          }
-                          onEditField(stop.id, updates);
-                        }} placeholder="Stop name"
-                          className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded px-2 py-1 text-sm text-white font-semibold" />
                         <textarea value={stop.desc} onChange={e=>onEditField(stop.id,{desc:e.target.value})} rows={2} placeholder="Description"
                           className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded px-2 py-1 text-[11px] text-gray-400 resize-none" />
-                        <div className="flex gap-2 flex-wrap">
-                          <input value={stop.address||""} onChange={e=>onEditField(stop.id,{address:e.target.value})} placeholder="Address"
-                            className="flex-1 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-2 py-0.5 text-[10px] text-gray-400 min-w-[120px]" />
-                          <input value={stop.mq||""} onChange={e=>onEditField(stop.id,{mq:e.target.value})} placeholder="Maps query (e.g. Apollo+Bay+VIC)"
-                            className="flex-1 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-2 py-0.5 text-[10px] text-gray-400 min-w-[120px]" />
-                        </div>
                         <div className="flex gap-2 flex-wrap text-[10px]">
                           <label className="flex items-center gap-1 text-gray-500">Dist(km) <input type="number" value={stop.dist} onChange={e=>onEditField(stop.id,{dist:+e.target.value})}
-                            className="w-12 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1 py-0.5 text-white" /></label>
+                            className="w-14 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1 py-0.5 text-white" /></label>
                           <label className="flex items-center gap-1 text-gray-500">Drive(min) <input type="number" value={stop.drive} onChange={e=>onEditField(stop.id,{drive:+e.target.value})}
+                            className="w-14 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1 py-0.5 text-white" /></label>
+                          <label className="flex items-center gap-1 text-gray-500">Batt% <input type="number" value={stop.batt} onChange={e=>onEditField(stop.id,{batt:+e.target.value})}
                             className="w-12 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1 py-0.5 text-white" /></label>
-                          <label className="flex items-center gap-1 text-gray-500">Batt% used <input type="number" value={stop.batt} onChange={e=>onEditField(stop.id,{batt:+e.target.value})}
-                            className="w-12 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1 py-0.5 text-white" /></label>
+                          <input value={stop.mq||""} onChange={e=>onEditField(stop.id,{mq:e.target.value})} placeholder="Maps query"
+                            className="flex-1 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-2 py-0.5 text-gray-500 min-w-[100px]" />
                         </div>
                         {stop.type === "charge" && stop.charge && (
                           <div className="flex gap-2 flex-wrap text-[10px] bg-green-500/5 rounded p-1.5 border border-green-500/10">
@@ -597,7 +641,7 @@
             {day.stops.map((s,i)=>(
               <React.Fragment key={s.id}>
                 {editMode && <AddStopButton onClick={()=>onAddStop(day.day, i)} />}
-                <StopCard stop={s} battArr={levels[i].arr} battDep={levels[i].dep} arrTime={levels[i].t} onChange={onChange} color={day.color} homeBattery={homeBattery} onHomeBatteryChange={onHomeBatteryChange} editMode={editMode} onDelete={onDelete} onEditField={onEditField} />
+                <StopCard stop={s} battArr={levels[i].arr} battDep={levels[i].dep} arrTime={levels[i].t} onChange={onChange} color={day.color} homeBattery={homeBattery} onHomeBatteryChange={onHomeBatteryChange} editMode={editMode} onDelete={onDelete} onEditField={onEditField} prevStop={i > 0 ? day.stops[i-1] : null} />
               </React.Fragment>
             ))}
             {editMode && <AddStopButton onClick={()=>onAddStop(day.day, day.stops.length)} />}
@@ -679,9 +723,23 @@
           <header className="relative overflow-hidden border-b border-[#1a1a1a]">
             <div className="absolute inset-0 bg-gradient-to-br from-blue-900/20 via-teal-900/10 to-purple-900/20" />
             <div className="relative max-w-4xl mx-auto px-4 py-10">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-3xl">⚡</span>
-                <span className="text-[11px] font-bold uppercase tracking-widest text-gray-500">Tesla Trip Planner</span>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-3xl">⚡</span>
+                  <span className="text-[11px] font-bold uppercase tracking-widest text-gray-500">Tesla Trip Planner</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {editMode && (
+                    <button onClick={onResetTrip}
+                      className="px-3 py-2 rounded-lg text-xs font-bold bg-[#141414] border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-all">
+                      ↺ Reset
+                    </button>
+                  )}
+                  <button onClick={()=>setEditMode(!editMode)}
+                    className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all border ${editMode ? "bg-blue-500/20 border-blue-500/50 text-blue-400" : "bg-[#1a1a1a] border-[#2a2a2a] text-gray-300 hover:text-white hover:border-[#3a3a3a]"}`}>
+                    {editMode ? "✓ Done Editing" : "✏️ Edit Trip"}
+                  </button>
+                </div>
               </div>
               <h1 className="text-4xl md:text-5xl font-extrabold mb-2">
                 <span className="gradient-text">Great Ocean Road</span><br/>
@@ -703,20 +761,6 @@
               </div>
             </div>
           </header>
-
-          {/* Edit toggle */}
-          <div className="max-w-4xl mx-auto px-4 pt-6 pb-2 flex items-center gap-2">
-            <button onClick={()=>setEditMode(!editMode)}
-              className={`px-4 py-2 rounded-lg text-[11px] font-bold transition-all border ${editMode ? "bg-blue-500/20 border-blue-500/50 text-blue-400" : "bg-[#141414] border-[#2a2a2a] text-gray-400 hover:text-white"}`}>
-              {editMode ? "✓ Done Editing" : "✏️ Edit Trip"}
-            </button>
-            {editMode && (
-              <button onClick={onResetTrip}
-                className="px-3 py-2 rounded-lg text-[11px] font-bold bg-[#141414] border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-all">
-                ↺ Reset to Default
-              </button>
-            )}
-          </div>
 
           {/* Days */}
           <div className="max-w-4xl mx-auto px-4 py-4">
