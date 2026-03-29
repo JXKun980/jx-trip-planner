@@ -353,7 +353,7 @@
 
     function AddStopButton({ onClick }) {
       return (
-        <div className="flex gap-0 -mt-3 -mb-2 relative z-10">
+        <div className="flex gap-0 -mt-3 mb-1 relative z-10">
           <div className="w-20 shrink-0 flex justify-center">
             <div className="w-[2px] h-full bg-[#2a2a2a]" />
           </div>
@@ -710,11 +710,10 @@
           {open && <div className="ml-2">
             {day.stops.map((s,i)=>(
               <React.Fragment key={s.id}>
-                {editMode && <AddStopButton onClick={()=>onAddStop(day.day, i)} />}
                 <StopCard stop={s} battArr={levels[i].arr} battDep={levels[i].dep} arrTime={levels[i].t} onChange={onChange} color={day.color} homeBattery={homeBattery} onHomeBatteryChange={onHomeBatteryChange} editMode={editMode} onDelete={onDelete} onEditField={onEditField} prevStop={i > 0 ? day.stops[i-1] : null} />
+                {editMode && <AddStopButton onClick={()=>onAddStop(day.day, i + 1)} />}
               </React.Fragment>
             ))}
-            {editMode && <AddStopButton onClick={()=>onAddStop(day.day, day.stops.length)} />}
           </div>}
         </div>
       );
