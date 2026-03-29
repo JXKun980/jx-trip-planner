@@ -392,6 +392,91 @@
       return null;
     }
 
+    // Photon autocomplete API (OpenStreetMap-based, free, no key)
+    async function fetchSuggestions(query) {
+      if (!query || query.length < 3) return [];
+      try {
+        const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=5&lang=en&lat=-37.8&lon=144.9`);
+        const data = await res.json();
+        return (data.features || []).map(f => {
+          const p = f.properties || {};
+          const parts = [p.name, p.street, p.housenumber, p.city || p.county, p.state, p.country].filter(Boolean);
+          return {
+            label: parts.join(", "),
+            name: p.name || "",
+            address: parts.join(", "),
+            lat: f.geometry?.coordinates?.[1],
+            lng: f.geometry?.coordinates?.[0],
+          };
+        });
+      } catch { return []; }
+    }
+
+    function AddressAutocomplete({ value, onChange, onSelect, placeholder, className, prevStop, onEditField, stopId }) {
+      const [suggestions, setSuggestions] = useState([]);
+      const [showSugg, setShowSugg] = useState(false);
+      const [timer, setTimer] = useState(null);
+      const ref = React.useRef(null);
+
+      const handleInput = (val) => {
+        onChange(val);
+        if (timer) clearTimeout(timer);
+        setTimer(setTimeout(async () => {
+          const s = await fetchSuggestions(val);
+          setSuggestions(s);
+          setShowSugg(s.length > 0);
+        }, 300));
+      };
+
+      const pick = (s) => {
+        setShowSugg(false);
+        const updates = {
+          address: s.address,
+          name: s.name || s.address.split(",")[0],
+          mq: s.address.replace(/\s+/g, "+"),
+          lat: s.lat,
+          lng: s.lng,
+        };
+        // Auto-detect charger
+        if (isChargerName(s.label)) {
+          updates.type = "charge"; updates.charge = makeChargeDefaults(); updates.emoji = "⚡";
+          updates.poi = s.name.replace(/\s+/g, "+");
+        }
+        // Auto-calc drive stats if prev stop available
+        if (prevStop && prevStop.lat && s.lat) {
+          const straight = haversine(prevStop.lat, prevStop.lng, s.lat, s.lng);
+          Object.assign(updates, estimateDriveStats(straight));
+        }
+        onSelect(updates);
+      };
+
+      // Close dropdown on outside click
+      React.useEffect(() => {
+        const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setShowSugg(false); };
+        document.addEventListener("mousedown", handler);
+        return () => document.removeEventListener("mousedown", handler);
+      }, []);
+
+      return (
+        <div className="relative" ref={ref}>
+          <input value={value} onChange={e=>handleInput(e.target.value)}
+            onFocus={()=>{ if (suggestions.length) setShowSugg(true); }}
+            placeholder={placeholder} className={className} />
+          {showSugg && (
+            <div className="absolute z-30 top-full left-0 right-0 mt-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg shadow-xl max-h-48 overflow-y-auto">
+              {suggestions.map((s, i) => (
+                <button key={i} onClick={()=>pick(s)}
+                  className="w-full text-left px-3 py-2 text-[11px] text-gray-300 hover:bg-[#2a2a2a] hover:text-white transition-colors border-b border-[#222] last:border-0 flex items-start gap-2">
+                  <span className="text-gray-500 shrink-0 mt-0.5">📍</span>
+                  <span className="leading-snug">{s.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
     function StopCard({stop, battArr, battDep, arrTime, onChange, color, homeBattery, onHomeBatteryChange, editMode, onDelete, onEditField, prevStop}) {
       const isCh=stop.type==="charge", isSl=stop.type==="sleep", isSt=stop.type==="start";
       const adj = !isSt && !isSl;
@@ -442,31 +527,16 @@
                   <div className="p-3.5 pb-2.5">
                     {editMode ? (
                       <div className="space-y-1.5">
-                        {/* Address on top — most important */}
-                        <div className="relative">
-                          <input value={stop.address||""} onChange={async e => {
-                            const addr = e.target.value;
-                            const updates = { address: addr, mq: addr.replace(/\s+/g, "+") };
-                            // Auto-detect charger
-                            if (isChargerName(addr) && stop.type !== "charge") {
-                              updates.type = "charge"; updates.charge = makeChargeDefaults(); updates.emoji = "⚡";
-                              updates.poi = addr.replace(/\s+/g, "+");
-                            }
-                            onEditField(stop.id, updates);
-                          }} placeholder="📍 Address or location name"
-                            className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg px-3 py-2 text-sm text-white font-medium placeholder-gray-600" />
-                          {prevStop && prevStop.lat && (
-                            <button onClick={async () => {
-                              const geo = await geocodeAddress(stop.address || stop.name);
-                              if (geo) {
-                                const straight = haversine(prevStop.lat, prevStop.lng, geo.lat, geo.lng);
-                                const est = estimateDriveStats(straight);
-                                onEditField(stop.id, { lat: geo.lat, lng: geo.lng, ...est });
-                              }
-                            }} className="absolute right-1.5 top-1.5 px-2 py-1 rounded bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-[9px] font-bold transition-colors"
-                              title="Auto-calculate distance, drive time & battery from this address">⚡ Calc</button>
-                          )}
-                        </div>
+                        {/* Address on top — autocomplete with suggestions */}
+                        <AddressAutocomplete
+                          value={stop.address||""}
+                          onChange={val => onEditField(stop.id, { address: val, mq: val.replace(/\s+/g, "+") })}
+                          onSelect={updates => onEditField(stop.id, updates)}
+                          placeholder="📍 Search for an address or place..."
+                          className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg px-3 py-2 text-sm text-white font-medium placeholder-gray-600 focus:border-blue-500/50 focus:outline-none"
+                          prevStop={prevStop}
+                          stopId={stop.id}
+                        />
                         {/* Name + type row */}
                         <div className="flex gap-1.5">
                           <select value={stop.type} onChange={e => {
