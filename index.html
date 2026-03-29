@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tesla Great Ocean Road Trip Planner</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background: #0a0a0a; color: #ededed; font-family: 'Inter', system-ui, sans-serif; }
+    * { scrollbar-width: thin; scrollbar-color: #333 transparent; }
+    .gradient-text {
+      background: linear-gradient(135deg, #3b82f6, #14b8a6);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .card-glow { box-shadow: 0 0 0 1px rgba(59,130,246,0.1), 0 4px 24px rgba(0,0,0,0.4); }
+    .card-glow:hover { box-shadow: 0 0 0 1px rgba(59,130,246,0.3), 0 8px 32px rgba(0,0,0,0.6); }
+    .charge-pulse { animation: pulse-green 2s infinite; }
+    @keyframes pulse-green {
+      0%,100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
+      50% { box-shadow: 0 0 0 8px rgba(34,197,94,0); }
+    }
+    .day-gradient-1 { background: linear-gradient(135deg, #1e3a5f 0%, #0a1628 100%); }
+    .day-gradient-2 { background: linear-gradient(135deg, #1a3a2a 0%, #0a1a14 100%); }
+    .day-gradient-3 { background: linear-gradient(135deg, #3a1a3a 0%, #1a0a1a 100%); }
+    .day-gradient-4 { background: linear-gradient(135deg, #3a2a1a 0%, #1a140a 100%); }
+    input[type=range] { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 9999px; cursor: pointer; }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #fff; cursor: pointer; }
+    input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #fff; cursor: pointer; border: none; }
+  </style>
+</head>
+<body class="antialiased">
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useMemo } = React;
+
+    // ── Data ──
+    const BATTERY_KWH = 60; // Tesla Model 3 Base LFP battery capacity
+    const VEHICLE_INFO = {
+      model: "Tesla Model 3 (Base RWD)", battery: "60 kWh (LFP)",
+      rangeWLTP: 513, rangeReal: 400, rangeGOR: 330,
+    };
+
+    // Tesla Model 3 LFP charging curve (conservative kW at each SOC band)
+    // The car limits intake regardless of charger max — these are car-side limits.
+    // Charger kW caps the rate if lower than the car curve.
+    const CHARGE_CURVE = [
+      // [socMin, socMax, carMaxKW]  — conservative real-world values
+      [0,   10,  120],
+      [10,  20,  145],
+      [20,  30,  150],  // LFP peaks around 20-40%
+      [30,  40,  140],
+      [40,  50,  120],
+      [50,  60,   85],
+      [60,  70,   60],
+      [70,  80,   40],
+      [80,  90,   22],
+      [90,  95,   12],
+      [95, 100,    6],
+    ];
+
+    // Simulate charging: given arrival SOC%, charger max kW, and minutes → departure SOC%
+    function calcChargedSOC(arrivalPct, chargerKW, minutes) {
+      let soc = arrivalPct; // current SOC in %
+      const stepMin = 0.5;  // simulate in 30-second steps for accuracy
+      let remaining = minutes;
+
+      while (remaining > 0 && soc < 100) {
+        const step = Math.min(stepMin, remaining);
+        // find the car's charge rate at current SOC
+        let carRate = 6; // fallback for >95%
+        for (const [lo, hi, kw] of CHARGE_CURVE) {
+          if (soc >= lo && soc < hi) { carRate = kw; break; }
+        }
+        // effective rate = min(car curve, charger max output)
+        const effectiveKW = Math.min(carRate, chargerKW);
+        // energy added in this time step (kWh)
+        const energyAdded = effectiveKW * (step / 60);
+        // convert to SOC %
+        const socAdded = (energyAdded / BATTERY_KWH) * 100;
+        soc = Math.min(100, soc + socAdded);
+        remaining -= step;
+      }
+      return Math.round(soc * 10) / 10; // round to 1 decimal
+    }
+
+    const initialDays = [
+      {
+        day: 1, date: "Thursday, 3 April 2025",
+        title: "Melbourne → Great Ocean Road → Wye River",
+        subtitle: "Begin the iconic coastal journey",
+        color: "#3b82f6", gradient: "day-gradient-1", startBattery: 100,
+        stops: [
+          { id:"d1-start", name:"52 Park Street, Melbourne", type:"start", desc:"Start your adventure! Make sure the Tesla is fully charged to 100% before departure.", stay:0, min:0, max:0, dist:0, drive:0, batt:0, address:"52 Park Street, South Melbourne VIC 3205", tip:"Start with 100% charge. LFP battery is safe to charge to 100%.", emoji:"🏠" },
+          { id:"d1-geelong", name:"Geelong Waterfront", type:"attraction", desc:"Explore the stunning Geelong Waterfront with its painted bollards, carousel, and cafés.", stay:60, min:30, max:120, dist:77, drive:60, batt:15, tip:"Walk along Cunningham Pier, see the famous painted bollards.", emoji:"🎡" },
+          { id:"d1-charge-geelong", name:"Tesla Supercharger Geelong", type:"charge", desc:"Quick top-up before heading into the Great Ocean Road where charging is sparse.", stay:20, min:5, max:60, dist:5, drive:8, batt:1, address:"71 Bellarine Hwy, Newcomb VIC 3219", charge:{type:"Tesla Supercharger V3",stalls:8,kw:250}, tip:"Critical charge! Next Supercharger is in Colac.", emoji:"⚡" },
+          { id:"d1-memorial", name:"Memorial Arch", type:"attraction", desc:"The iconic Great Ocean Road Memorial Arch — gateway to one of the world's most scenic coastal drives. Built by returned soldiers after WWI.", stay:20, min:10, max:40, dist:40, drive:35, batt:10, tip:"Perfect photo opportunity!", emoji:"🏛️" },
+          { id:"d1-gor", name:"Great Ocean Road Scenic Drive", type:"attraction", desc:"Drive along the spectacular coastal road, passing through Lorne and Anglesea. Stop at lookouts along the way.", stay:45, min:20, max:90, dist:50, drive:60, batt:15, tip:"Teddy's Lookout near Lorne is spectacular.", emoji:"🌊" },
+          { id:"d1-sleep", name:"6080 Great Ocean Road, Wye River", type:"sleep", desc:"Rest for the night at your accommodation along the Great Ocean Road.", stay:0, min:0, max:0, dist:15, drive:18, batt:5, address:"6080 Great Ocean Road, Wye River VIC 3221", tip:"No charger — will charge at Colac tomorrow.", emoji:"🌙" },
+        ],
+      },
+      {
+        day: 2, date: "Friday, 4 April 2025",
+        title: "Apollo Bay → 12 Apostles → Warrnambool",
+        subtitle: "The iconic landmarks day",
+        color: "#14b8a6", gradient: "day-gradient-2", startBattery: 54,
+        stops: [
+          { id:"d2-start", name:"6080 Great Ocean Road (Departure)", type:"start", desc:"Start early. Battery carried over from last night.", stay:0, min:0, max:0, dist:0, drive:0, batt:0, tip:"Head to Apollo Bay, then detour to Colac Supercharger.", emoji:"🌅" },
+          { id:"d2-apollo", name:"Apollo Bay", type:"attraction", desc:"Charming seaside town at the foothills of the Otways. Enjoy a coffee, walk along the beach, and explore the harbour.", stay:60, min:30, max:120, dist:30, drive:35, batt:9, tip:"Try the Great Ocean Road Brewhouse.", emoji:"☕" },
+          { id:"d2-charge-colac", name:"Tesla Supercharger Colac", type:"charge", desc:"Important charge stop! Detour inland to Colac Supercharger before continuing to the 12 Apostles.", stay:35, min:10, max:60, dist:58, drive:50, batt:15, address:"144/158 Bromfield St, Colac VIC 3250", charge:{type:"Tesla Supercharger V3",stalls:4,kw:250}, tip:"Essential stop. Grab lunch while charging.", emoji:"⚡" },
+          { id:"d2-gibson", name:"Gibson Steps", type:"attraction", desc:"Descend the cliff staircase to the beach below the 12 Apostles. Walk on the sand between massive limestone cliffs.", stay:45, min:20, max:75, dist:95, drive:75, batt:22, tip:"Check tide times! Beach only accessible at low-to-mid tide.", emoji:"🪜" },
+          { id:"d2-charge-pc", name:"Tesla Supercharger Port Campbell", type:"charge", desc:"Charge up at Port Campbell while exploring the town.", stay:30, min:10, max:60, dist:13, drive:12, batt:3, address:"18 Tregea St, Port Campbell VIC 3269", charge:{type:"Tesla Supercharger V2",stalls:4,kw:150}, tip:"Grab fish & chips while charging.", emoji:"⚡" },
+          { id:"d2-london", name:"London Bridge", type:"attraction", desc:"Once a double-arch rock formation, the bridge collapsed in 1990 leaving two tourists stranded! Now a dramatic single arch.", stay:30, min:15, max:60, dist:27, drive:22, batt:7, tip:"Sunset here is incredible.", emoji:"🌉" },
+          { id:"d2-sleep", name:"Innova Motel, Warrnambool", type:"sleep", desc:"Rest at the Innova Motel in Warrnambool.", stay:0, min:0, max:0, dist:75, drive:55, batt:18, address:"Innova Motel, Warrnambool VIC 3280", tip:"Charge at Warrnambool Supercharger in the morning.", emoji:"🌙" },
+        ],
+      },
+      {
+        day: 3, date: "Saturday, 5 April 2025",
+        title: "Warrnambool → Mount Gambier → Coonawarra",
+        subtitle: "Cross the border into South Australia",
+        color: "#a855f7", gradient: "day-gradient-3", startBattery: 35,
+        stops: [
+          { id:"d3-charge-wbl", name:"Tesla Supercharger Warrnambool", type:"charge", desc:"Morning charge before the long drive to Mount Gambier. Critical — no Superchargers between here and Mt Gambier.", stay:50, min:10, max:75, dist:3, drive:5, batt:1, address:"21-23 Gateway Rd, Warrnambool VIC 3280", charge:{type:"Tesla Supercharger V3",stalls:6,kw:250}, tip:"CHARGE HIGH! Drive to Mt Gambier is ~270km with no charger.", emoji:"⚡" },
+          { id:"d3-gambier", name:"Mount Gambier — Blue Lake", type:"attraction", desc:"Visit the stunning Blue Lake, a volcanic crater lake that turns vivid blue. Also explore Umpherston Sinkhole garden.", stay:90, min:45, max:180, dist:270, drive:185, batt:65, tip:"Also visit Umpherston Sinkhole (free entry) — a sunken garden.", emoji:"🏔️" },
+          { id:"d3-charge-mg", name:"Tesla Supercharger Mount Gambier", type:"charge", desc:"Charge up at Mount Gambier Supercharger for the next leg.", stay:35, min:10, max:60, dist:3, drive:5, batt:1, address:"1-3 Ramsay Ave, Mount Gambier SA 5290", charge:{type:"Tesla Supercharger V3",stalls:6,kw:250}, tip:"Grab lunch at a nearby restaurant while charging.", emoji:"⚡" },
+          { id:"d3-sleep", name:"Coonawarra Bush Holiday Park", type:"sleep", desc:"Relax at the Coonawarra Bush Holiday Park, in the heart of Australia's famous wine region.", stay:0, min:0, max:0, dist:62, drive:45, batt:14, address:"Coonawarra Bush Holiday Park, Coonawarra SA", tip:"Stop at Penola for wine tasting on the way!", emoji:"🌙" },
+        ],
+      },
+      {
+        day: 4, date: "Sunday, 6 April 2025",
+        title: "Naracoorte → Pink Lake → Melbourne",
+        subtitle: "The big drive home with unique stops",
+        color: "#f59e0b", gradient: "day-gradient-4", startBattery: 80,
+        stops: [
+          { id:"d4-start", name:"Coonawarra (Departure)", type:"start", desc:"Early start for the long drive home.", stay:0, min:0, max:0, dist:0, drive:0, batt:0, tip:"Start early! ~600km total today.", emoji:"🌅" },
+          { id:"d4-naracoorte", name:"Naracoorte Caves National Park", type:"attraction", desc:"UNESCO World Heritage listed caves with fossil deposits dating back 500,000 years. Take a guided cave tour.", stay:90, min:60, max:150, dist:18, drive:15, batt:5, address:"Naracoorte Caves National Park, SA 5271", tip:"Book Victoria Fossil Cave or Alexandra Cave tour. Allow 60-90 mins.", emoji:"🦴" },
+          { id:"d4-charge-bt", name:"Tesla Supercharger Bordertown", type:"charge", desc:"Essential charge stop before heading into Victoria.", stay:40, min:10, max:60, dist:105, drive:70, batt:25, address:"2 Dukes Hwy, Bordertown SA 5268", charge:{type:"Tesla Supercharger V3",stalls:6,kw:250}, tip:"Good rest stop with nearby amenities.", emoji:"⚡" },
+          { id:"d4-charge-hm", name:"Tesla Supercharger Horsham", type:"charge", desc:"Quick top-up for the Pink Lake detour and drive home.", stay:25, min:10, max:55, dist:115, drive:75, batt:28, address:"36 Darlot St, Horsham VIC 3400", charge:{type:"Tesla Supercharger V3",stalls:6,kw:250}, tip:"Quick charge. Good snack break town.", emoji:"⚡" },
+          { id:"d4-pink", name:"Pink Lake, Dimboola", type:"attraction", desc:"A stunning natural phenomenon — the lake turns pink due to algae and salt. Best on sunny days!", stay:40, min:20, max:75, dist:35, drive:25, batt:8, address:"Pink Lake, Dimboola VIC 3414", tip:"Most pink on hot, sunny days. Walk around for different angles.", emoji:"🩷" },
+          { id:"d4-charge-bal", name:"Tesla Supercharger Ballarat", type:"charge", desc:"Final charge before the home stretch to Melbourne.", stay:25, min:10, max:55, dist:195, drive:130, batt:45, address:"333 Gillies St North, Ballarat VIC 3355", charge:{type:"Tesla Supercharger V3",stalls:8,kw:250}, tip:"Last charge before Melbourne.", emoji:"⚡" },
+          { id:"d4-home", name:"52 Park Street, Melbourne", type:"sleep", desc:"Welcome home! What an incredible 4-day adventure. 🎉", stay:0, min:0, max:0, dist:115, drive:85, batt:25, address:"52 Park Street, South Melbourne VIC 3205", tip:"Home sweet home! Total trip: ~1,500 km", emoji:"🏠" },
+        ],
+      },
+    ];
+
+    // ── Helpers ──
+    function fmt(m) { const h=Math.floor(m/60), r=m%60; return h===0?`${r}min`:r===0?`${h}h`:`${h}h ${r}min`; }
+    function timeOfDay(h, addM) { const t=h*60+addM, hr=Math.floor(t/60)%24, mn=t%60, ap=hr>=12?"PM":"AM", h12=hr===0?12:hr>12?hr-12:hr; return `${h12}:${String(mn).padStart(2,'0')} ${ap}`; }
+    function dayStats(stops) {
+      let dist=0, drv=0, stay=0, chrg=0, cs=0;
+      stops.forEach(s => { dist+=s.dist; drv+=s.drive; stay+=s.stay; if(s.type==="charge"){chrg+=s.stay;cs++;} });
+      return {dist,drv,stay,chrg,cs};
+    }
+
+    // ── Comments persistence ──
+    function loadComments() {
+      try { return JSON.parse(localStorage.getItem("tripComments") || "{}"); } catch { return {}; }
+    }
+    function saveComments(c) { localStorage.setItem("tripComments", JSON.stringify(c)); }
+
+    function CommentsSection({stopId}) {
+      const [comments, setComments] = useState(() => (loadComments()[stopId] || []));
+      const [text, setText] = useState("");
+      const [open, setOpen] = useState(false);
+
+      const persist = (next) => { const all = loadComments(); all[stopId] = next; saveComments(all); };
+
+      const add = () => {
+        if (!text.trim()) return;
+        const next = [...comments, { text: text.trim(), ts: new Date().toLocaleString() }];
+        setComments(next); persist(next); setText("");
+      };
+
+      const remove = (i) => {
+        const next = comments.filter((_, j) => j !== i);
+        setComments(next); persist(next);
+      };
+
+      return (
+        <div className="px-3.5 py-2 border-t border-[#2a2a2a]">
+          <button onClick={() => setOpen(!open)} className="flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-gray-200 transition-colors w-full text-left">
+            <span>💬</span>
+            <span className="font-medium">Comments</span>
+            {comments.length > 0 && (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400">{comments.length}</span>
+            )}
+            <span className="ml-auto text-[10px] text-gray-600">{open ? "— hide input" : "+ add"}</span>
+          </button>
+          {comments.length > 0 && (
+            <div className="space-y-1.5 mt-2">
+              {comments.map((c, i) => (
+                <div key={i} className="flex items-start gap-2 bg-[#0d0d0d] rounded-lg p-2 group">
+                  <div className="flex-1">
+                    <p className="text-[11px] text-gray-300 whitespace-pre-wrap">{c.text}</p>
+                    <p className="text-[9px] text-gray-600 mt-0.5">{c.ts}</p>
+                  </div>
+                  <button onClick={() => remove(i)}
+                    className="text-[10px] text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-0.5"
+                    title="Delete">✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+          {open && (
+            <div className="flex gap-1.5 mt-2">
+              <input value={text} onChange={e => setText(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); add(); }}}
+                placeholder="Add a comment..."
+                className="flex-1 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-2 py-1.5 text-[11px] text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/50" />
+              <button onClick={add}
+                className="px-2.5 py-1.5 rounded bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-[11px] font-medium transition-colors shrink-0">
+                Add
+              </button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ── Components ──
+    function BatteryGauge({pct}) {
+      const c = pct>50?"#22c55e":pct>20?"#f59e0b":"#ef4444";
+      return (
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-block w-10 h-4 rounded-sm border-2 border-gray-500 relative p-[1px]">
+            <span className="block h-full rounded-xs transition-all" style={{width:`${Math.max(0,Math.min(100,pct))}%`,background:c}} />
+            <span className="absolute -right-[4px] top-1/2 -translate-y-1/2 w-[2px] h-1.5 bg-gray-500 rounded-r-sm" />
+          </span>
+          <span className="text-[10px] font-bold" style={{color:c}}>{Math.round(pct)}%</span>
+        </span>
+      );
+    }
+
+    function StopCard({stop, battArr, battDep, arrTime, onChange, color}) {
+      const isCh=stop.type==="charge", isSl=stop.type==="sleep", isSt=stop.type==="start";
+      const adj = !isSt && !isSl;
+      const pct = stop.max>stop.min ? ((stop.stay-stop.min)/(stop.max-stop.min))*100 : 0;
+      return (
+        <div className="relative pl-8 pb-5">
+          <div className="absolute left-[13px] top-8 bottom-0 w-[2px]" style={{background:`linear-gradient(to bottom, ${color}44, transparent)`}} />
+          <div className={`absolute left-[4px] top-2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] z-10 ${isCh?"charge-pulse":""}`}
+               style={{background:isCh?"#22c55e":isSl?"#6366f1":isSt?color:"#374151", border:`2px solid ${isCh?"#22c55e":color}`}}>
+            {stop.emoji}
+          </div>
+          <div className="card-glow rounded-xl bg-[#141414] border border-[#2a2a2a] overflow-hidden transition-all hover:border-[#3a3a3a]">
+            <div className="p-3.5 pb-2.5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-base">{stop.emoji}</span>
+                    <h3 className="font-semibold text-white text-sm">{stop.name}</h3>
+                  </div>
+                  <p className="text-[11px] text-gray-400 leading-relaxed">{stop.desc}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-[10px] text-gray-500">Arrive</div>
+                  <div className="text-sm font-semibold text-white">{arrTime}</div>
+                </div>
+              </div>
+            </div>
+            <div className="px-3.5 py-1.5 bg-[#0d0d0d] flex items-center gap-3 flex-wrap text-[11px]">
+              {stop.dist>0 && <span className="text-gray-400">🚗 {stop.dist}km · {fmt(stop.drive)}</span>}
+              {!isSt && <span className="text-gray-400">🔋 <BatteryGauge pct={battArr} /></span>}
+              {isCh && stop.charge && (
+                <span className="ml-auto text-green-400 text-[10px] font-medium px-2 py-0.5 rounded-full bg-green-400/10 border border-green-400/20">
+                  {stop.charge.type} ({stop.charge.kw}kW) → {Math.round(battDep)}%
+                </span>
+              )}
+            </div>
+            {isCh && stop.charge && (
+              <div className="px-3.5 py-2 bg-green-500/5 border-t border-green-500/10">
+                <div className="flex items-center gap-3 flex-wrap text-[11px]">
+                  <span><span className="text-gray-500">Stalls: </span><span className="text-green-400">{stop.charge.stalls}</span></span>
+                  <span><span className="text-gray-500">Charger: </span><span className="text-green-400">{stop.charge.kw} kW</span></span>
+                  <span><span className="text-gray-500">+{Math.round(battDep - battArr)}% </span><span className="text-gray-600">in {fmt(stop.stay)}</span></span>
+                  <span><span className="text-gray-500">Depart: </span><BatteryGauge pct={battDep} /></span>
+                </div>
+                {stop.address && <div className="mt-1 text-[10px] text-gray-500">📍 {stop.address}</div>}
+              </div>
+            )}
+            {adj && (
+              <div className="px-3.5 py-2.5 border-t border-[#2a2a2a]">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[11px] text-gray-400">⏱️ Stay: <span className="text-white font-semibold">{fmt(stop.stay)}</span></span>
+                  <div className="flex gap-1">
+                    <button onClick={()=>onChange(stop.id,Math.max(stop.min,stop.stay-5))} className="w-6 h-6 rounded bg-[#2a2a2a] hover:bg-[#3a3a3a] text-xs font-bold text-gray-300">−</button>
+                    <button onClick={()=>onChange(stop.id,Math.min(stop.max,stop.stay+5))} className="w-6 h-6 rounded bg-[#2a2a2a] hover:bg-[#3a3a3a] text-xs font-bold text-gray-300">+</button>
+                  </div>
+                </div>
+                <input type="range" min={stop.min} max={stop.max} value={stop.stay} onChange={e=>onChange(stop.id,+e.target.value)}
+                  className="w-full" style={{background:`linear-gradient(to right, ${color} ${pct}%, #2a2a2a ${pct}%)`}} />
+                <div className="flex justify-between text-[10px] text-gray-600 mt-0.5"><span>{fmt(stop.min)}</span><span>{fmt(stop.max)}</span></div>
+              </div>
+            )}
+            <CommentsSection stopId={stop.id} />
+            {stop.tip && <div className="px-3.5 py-1.5 border-t border-[#2a2a2a] bg-[#0a0a0a]"><p className="text-[10px] text-yellow-500/80">💡 {stop.tip}</p></div>}
+          </div>
+        </div>
+      );
+    }
+
+    function DaySection({day, onChange, startH, onStartH}) {
+      const [open, setOpen] = useState(true);
+      const st = dayStats(day.stops);
+      const levels = useMemo(() => {
+        let b = day.startBattery, el=0, out=[];
+        day.stops.forEach(s => {
+          b -= s.batt; el += s.drive;
+          const arr=b, t=timeOfDay(startH, el);
+          let dep=arr;
+          if(s.type==="charge" && s.charge) {
+            dep = calcChargedSOC(arr, s.charge.kw, s.stay);
+            b = dep;
+          }
+          out.push({arr,dep,t}); el+=s.stay;
+        });
+        return out;
+      }, [day, startH]);
+      const endT = useMemo(()=>timeOfDay(startH, day.stops.reduce((s,x)=>s+x.drive+x.stay,0)), [day,startH]);
+
+      return (
+        <div className="mb-7">
+          <button onClick={()=>setOpen(!open)} className={`w-full ${day.gradient} rounded-2xl p-5 mb-3 text-left border border-[#2a2a2a] card-glow transition-all hover:scale-[1.003]`}>
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="text-[11px] font-bold px-3 py-1 rounded-full" style={{background:day.color,color:"#000"}}>DAY {day.day}</span>
+                  <span className="text-[11px] text-gray-400">{day.date}</span>
+                  <select value={startH} onClick={e=>e.stopPropagation()} onChange={e=>{e.stopPropagation();onStartH(+e.target.value);}}
+                    className="bg-black/40 border border-white/10 rounded px-2 py-0.5 text-[11px] text-white ml-2">
+                    {Array.from({length:13},(_,i)=>i+5).map(h=><option key={h} value={h}>{timeOfDay(h,0)}</option>)}
+                  </select>
+                </div>
+                <h2 className="text-lg font-bold text-white mb-0.5">{day.title}</h2>
+                <p className="text-sm text-gray-400">{day.subtitle}</p>
+              </div>
+              <div className="text-xl mt-1">{open?"▾":"▸"}</div>
+            </div>
+            <div className="flex gap-3 mt-3 flex-wrap">
+              {[["Distance",`${st.dist} km`,"white"],["Drive",fmt(st.drv),"white"],["Activities",fmt(st.stay),"#60a5fa"],["Charging",fmt(st.chrg),"#4ade80"],["Schedule",`${timeOfDay(startH,0)} → ${endT}`,"white"]].map(([l,v,c])=>(
+                <div key={l} className="bg-black/30 rounded-lg px-3 py-1.5">
+                  <div className="text-[9px] text-gray-500 uppercase tracking-wider">{l}</div>
+                  <div className="text-sm font-bold" style={{color:c}}>{v}</div>
+                </div>
+              ))}
+            </div>
+          </button>
+          {open && <div className="ml-2">{day.stops.map((s,i)=><StopCard key={s.id} stop={s} battArr={levels[i].arr} battDep={levels[i].dep} arrTime={levels[i].t} onChange={onChange} color={day.color} />)}</div>}
+        </div>
+      );
+    }
+
+    // Simulate a full day and return the final battery %
+    function simulateDayEndBattery(day) {
+      let b = day.startBattery;
+      for (const s of day.stops) {
+        b -= s.batt;
+        if (s.type === "charge" && s.charge) {
+          b = calcChargedSOC(b, s.charge.kw, s.stay);
+        }
+      }
+      return b;
+    }
+
+    function App() {
+      const [days, setDays] = useState(initialDays);
+      const [startHours, setStartHours] = useState([8,7,7,6]);
+
+      // Chain battery across days: each day's startBattery = previous day's ending battery
+      const daysWithBattery = useMemo(() => {
+        const result = [];
+        for (let i = 0; i < days.length; i++) {
+          if (i === 0) {
+            result.push(days[i]); // Day 1 starts at 100%
+          } else {
+            const prevEnd = simulateDayEndBattery(result[i - 1]);
+            result.push({ ...days[i], startBattery: prevEnd });
+          }
+        }
+        return result;
+      }, [days]);
+
+      const onChange = (id, val) => setDays(p=>p.map(d=>({...d,stops:d.stops.map(s=>s.id===id?{...s,stay:val}:s)})));
+      const onStartH = (i, h) => setStartHours(p=>{const n=[...p];n[i]=h;return n;});
+
+      const totals = useMemo(()=>{
+        let d=0,dr=0,s=0,c=0,cs=0;
+        daysWithBattery.forEach(day=>{const st=dayStats(day.stops);d+=st.dist;dr+=st.drv;s+=st.stay;c+=st.chrg;cs+=st.cs;});
+        return {d,dr,s,c,cs};
+      },[daysWithBattery]);
+
+      return (
+        <div className="min-h-screen">
+          {/* Hero */}
+          <header className="relative overflow-hidden border-b border-[#1a1a1a]">
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-900/20 via-teal-900/10 to-purple-900/20" />
+            <div className="relative max-w-4xl mx-auto px-4 py-10">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-3xl">⚡</span>
+                <span className="text-[11px] font-bold uppercase tracking-widest text-gray-500">Tesla Trip Planner</span>
+              </div>
+              <h1 className="text-4xl md:text-5xl font-extrabold mb-2">
+                <span className="gradient-text">Great Ocean Road</span><br/>
+                <span className="text-white">& Beyond Adventure</span>
+              </h1>
+              <p className="text-gray-400 text-base mb-5 max-w-xl">Melbourne → Geelong → Great Ocean Road → Warrnambool → Mount Gambier → Naracoorte → Pink Lake → Home</p>
+              <div className="flex items-center gap-2 text-[11px] text-gray-500 mb-5 flex-wrap">
+                {[`🚗 ${VEHICLE_INFO.model}`,`🔋 ${VEHICLE_INFO.battery}`,`📏 ~${VEHICLE_INFO.rangeReal}km real range`].map(t=>(
+                  <span key={t} className="px-2 py-1 rounded bg-[#1a1a1a] border border-[#2a2a2a]">{t}</span>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                {[[totals.d.toLocaleString(),"Total km","white"],[fmt(totals.dr),"Driving","white"],[fmt(totals.s),"Activities","#60a5fa"],[String(totals.cs),"Charge stops","#4ade80"],["4","Days","#c084fc"]].map(([v,l,c])=>(
+                  <div key={l} className="bg-[#141414] rounded-xl p-3.5 border border-[#2a2a2a]">
+                    <div className="text-xl font-bold" style={{color:c}}>{v}</div>
+                    <div className="text-[11px] text-gray-500">{l}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </header>
+
+          {/* Days */}
+          <div className="max-w-4xl mx-auto px-4 py-6">
+            {daysWithBattery.map((d,i)=><DaySection key={d.day} day={d} onChange={onChange} startH={startHours[i]} onStartH={h=>onStartH(i,h)} />)}
+          </div>
+
+          {/* Charging summary */}
+          <div className="max-w-4xl mx-auto px-4 pb-10">
+            <div className="bg-[#141414] rounded-2xl p-5 border border-[#2a2a2a] card-glow">
+              <h3 className="text-base font-bold text-white mb-3">⚡ Charging Strategy Summary</h3>
+              <div className="space-y-2">
+                {daysWithBattery.flatMap(day => {
+                  // simulate battery through the day to get arrival SOC at each charger
+                  let b = day.startBattery;
+                  return day.stops.map(s => {
+                    b -= s.batt;
+                    const arr = b;
+                    if (s.type==="charge" && s.charge) {
+                      const dep = calcChargedSOC(arr, s.charge.kw, s.stay);
+                      b = dep;
+                      return (
+                        <div key={s.id} className="flex items-center justify-between bg-[#0a0a0a] rounded-lg p-2.5 border border-green-500/10">
+                          <div className="flex items-center gap-2.5">
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{background:day.color,color:"#000"}}>D{day.day}</span>
+                            <div>
+                              <div className="text-sm font-medium text-white">{s.name}</div>
+                              <div className="text-[10px] text-gray-500">{s.address} · {s.charge.kw}kW</div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-sm font-semibold text-green-400">{fmt(s.stay)}</div>
+                            <div className="text-[10px] text-gray-500">{Math.round(arr)}% → {Math.round(dep)}% (+{Math.round(dep-arr)}%)</div>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }).filter(Boolean);
+                })}
+              </div>
+              <div className="mt-3 p-2.5 rounded-lg bg-yellow-500/5 border border-yellow-500/10">
+                <p className="text-[11px] text-yellow-500/80">⚠️ <strong>Important:</strong> The Model 3 base has ~400km real range (highway) / ~330km (winding GOR). Always stay above 20%. The Warrnambool → Mt Gambier leg (270km) is the longest stretch without a Supercharger — charge to 100%.</p>
+              </div>
+              <div className="mt-2 p-2.5 rounded-lg bg-blue-500/5 border border-blue-500/10">
+                <p className="text-[11px] text-blue-400/80">💡 <strong>LFP Battery Tip:</strong> The Model 3 base uses LFP chemistry. Tesla recommends charging to 100% regularly — safe and helps calibration.</p>
+              </div>
+            </div>
+          </div>
+
+          <footer className="border-t border-[#1a1a1a] py-5 text-center">
+            <p className="text-[11px] text-gray-600">Tesla Great Ocean Road Trip Planner · Distances & times are estimates · Verify Supercharger availability via Tesla app</p>
+          </footer>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
