@@ -341,7 +341,7 @@
       );
     }
 
-    function StopCard({stop, battArr, battDep, arrTime, onChange, color}) {
+    function StopCard({stop, battArr, battDep, arrTime, onChange, color, homeBattery, onHomeBatteryChange}) {
       const isCh=stop.type==="charge", isSl=stop.type==="sleep", isSt=stop.type==="start";
       const adj = !isSt && !isSl;
       const dotBg = isCh?"#22c55e":isSl?"#6366f1":isSt?color:"#374151";
@@ -391,6 +391,14 @@
                       <h3 className="font-semibold text-white text-sm">{stop.name}</h3>
                     </div>
                     <p className="text-[11px] text-gray-400 leading-relaxed">{stop.desc}</p>
+                    {isSt && homeBattery !== undefined && onHomeBatteryChange && stop.id === "d1-start" && (
+                      <div className="mt-2 flex items-center gap-2 bg-[#0d0d0d] rounded-lg px-3 py-2 border border-[#2a2a2a]">
+                        <span className="text-[11px] text-gray-400">🔋 Starting battery:</span>
+                        <input type="range" min={20} max={100} value={homeBattery} onChange={e=>onHomeBatteryChange(+e.target.value)}
+                          className="flex-1 h-1" style={{background:`linear-gradient(to right, #22c55e ${homeBattery}%, #2a2a2a ${homeBattery}%)`}} />
+                        <span className="text-sm font-bold text-green-400 w-10 text-right">{homeBattery}%</span>
+                      </div>
+                    )}
                   </div>
                   <div className="px-3.5 py-1.5 bg-[#0d0d0d] flex items-center gap-3 flex-wrap text-[11px]">
                     {stop.dist>0 && <span className="text-gray-400">🚗 {stop.dist}km · {fmt(stop.drive)}</span>}
@@ -420,9 +428,9 @@
                 <a href={mapLink(stop)} target="_blank" rel="noopener noreferrer"
                   className="hidden md:flex w-20 shrink-0 border-l border-[#2a2a2a] items-center justify-center bg-[#0d0d0d] hover:bg-[#1a1a1a] transition-colors group cursor-pointer"
                   title="Open in Google Maps">
-                  <div className="flex flex-col items-center gap-1 opacity-40 group-hover:opacity-100 transition-opacity">
-                    <span className="text-lg">📍</span>
-                    <span className="text-[8px] text-gray-400 group-hover:text-white font-medium writing-mode-vertical" style={{writingMode:"vertical-rl"}}>Maps</span>
+                  <div className="flex flex-col items-center gap-1.5 opacity-40 group-hover:opacity-100 transition-opacity">
+                    <span className="text-2xl">📍</span>
+                    <span className="text-[10px] text-gray-400 group-hover:text-white font-semibold" style={{writingMode:"vertical-rl"}}>Maps</span>
                   </div>
                 </a>
               </div>
@@ -432,7 +440,7 @@
       );
     }
 
-    function DaySection({day, onChange, startH, onStartH}) {
+    function DaySection({day, onChange, startH, onStartH, homeBattery, onHomeBatteryChange}) {
       const [open, setOpen] = useState(true);
       const st = dayStats(day.stops);
       const levels = useMemo(() => {
@@ -488,7 +496,7 @@
               Open route in Maps ↗
             </a>
           </div>
-          {open && <div className="ml-2">{day.stops.map((s,i)=><StopCard key={s.id} stop={s} battArr={levels[i].arr} battDep={levels[i].dep} arrTime={levels[i].t} onChange={onChange} color={day.color} />)}</div>}
+          {open && <div className="ml-2">{day.stops.map((s,i)=><StopCard key={s.id} stop={s} battArr={levels[i].arr} battDep={levels[i].dep} arrTime={levels[i].t} onChange={onChange} color={day.color} homeBattery={homeBattery} onHomeBatteryChange={onHomeBatteryChange} />)}</div>}
         </div>
       );
     }
@@ -552,12 +560,6 @@
                 {[`🚗 ${VEHICLE_INFO.model}`,`🔋 ${VEHICLE_INFO.battery}`,`📏 ~${VEHICLE_INFO.rangeReal}km real range`].map(t=>(
                   <span key={t} className="px-2 py-1 rounded bg-[#1a1a1a] border border-[#2a2a2a]">{t}</span>
                 ))}
-                <span className="px-2 py-1 rounded bg-[#1a1a1a] border border-[#2a2a2a] flex items-center gap-1.5">
-                  🏠 Start battery:
-                  <input type="range" min={20} max={100} value={homeBattery} onChange={e=>setHomeBattery(+e.target.value)}
-                    className="w-16 h-1" style={{background:`linear-gradient(to right, #22c55e ${homeBattery}%, #2a2a2a ${homeBattery}%)`}} />
-                  <span className="font-bold text-white w-8 text-right">{homeBattery}%</span>
-                </span>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 {[[totals.d.toLocaleString(),"Total km","white"],[fmt(totals.dr),"Driving","white"],[fmt(totals.s),"Activities","#60a5fa"],[String(totals.cs),"Charge stops","#4ade80"],["4","Days","#c084fc"]].map(([v,l,c])=>(
@@ -572,7 +574,7 @@
 
           {/* Days */}
           <div className="max-w-4xl mx-auto px-4 py-6">
-            {daysWithBattery.map((d,i)=><DaySection key={d.day} day={d} onChange={onChange} startH={startHours[i]} onStartH={h=>onStartH(i,h)} />)}
+            {daysWithBattery.map((d,i)=><DaySection key={d.day} day={d} onChange={onChange} startH={startHours[i]} onStartH={h=>onStartH(i,h)} homeBattery={homeBattery} onHomeBatteryChange={setHomeBattery} />)}
           </div>
 
           {/* Charging summary */}
