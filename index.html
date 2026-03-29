@@ -103,12 +103,12 @@
         subtitle: "Begin the iconic coastal journey",
         color: "#3b82f6", gradient: "day-gradient-1", startBattery: 100,
         stops: [
-          { id:"d1-start", name:"52 Park Street, Melbourne", type:"start", desc:"Start your adventure! Make sure the Tesla is fully charged to 100% before departure.", stay:0, min:0, max:0, dist:0, drive:0, batt:0, address:"52 Park Street, South Melbourne VIC 3205", tip:"Start with 100% charge. LFP battery is safe to charge to 100%.", emoji:"🏠" },
-          { id:"d1-geelong", name:"Geelong Waterfront", type:"attraction", desc:"Explore the stunning Geelong Waterfront with its painted bollards, carousel, and cafés.", stay:60, min:30, max:120, dist:77, drive:60, batt:15, tip:"Walk along Cunningham Pier, see the famous painted bollards.", emoji:"🎡" },
-          { id:"d1-charge-geelong", name:"Tesla Supercharger Geelong", type:"charge", desc:"Quick top-up before heading into the Great Ocean Road where charging is sparse.", stay:20, min:5, max:60, dist:5, drive:8, batt:1, address:"71 Bellarine Hwy, Newcomb VIC 3219", charge:{type:"Tesla Supercharger V3",stalls:8,kw:250}, tip:"Critical charge! Next Supercharger is in Colac.", emoji:"⚡" },
-          { id:"d1-memorial", name:"Memorial Arch", type:"attraction", desc:"The iconic Great Ocean Road Memorial Arch — gateway to one of the world's most scenic coastal drives. Built by returned soldiers after WWI.", stay:20, min:10, max:40, dist:40, drive:35, batt:10, tip:"Perfect photo opportunity!", emoji:"🏛️" },
-          { id:"d1-gor", name:"Great Ocean Road Scenic Drive", type:"attraction", desc:"Drive along the spectacular coastal road, passing through Lorne and Anglesea. Stop at lookouts along the way.", stay:45, min:20, max:90, dist:50, drive:60, batt:15, tip:"Teddy's Lookout near Lorne is spectacular.", emoji:"🌊" },
-          { id:"d1-sleep", name:"6080 Great Ocean Road, Wye River", type:"sleep", desc:"Rest for the night at your accommodation along the Great Ocean Road.", stay:0, min:0, max:0, dist:15, drive:18, batt:5, address:"6080 Great Ocean Road, Wye River VIC 3221", tip:"No charger — will charge at Colac tomorrow.", emoji:"🌙" },
+          { id:"d1-start", name:"52 Park Street, Melbourne", type:"start", desc:"Start your adventure! Make sure the Tesla is fully charged to 100% before departure.", stay:0, min:0, max:0, dist:0, drive:0, batt:0, address:"52 Park Street, South Melbourne VIC 3205", tip:"Start with 100% charge. LFP battery is safe to charge to 100%.", emoji:"🏠", lat:-37.8136, lng:144.9631, mq:"52+Park+Street,+South+Melbourne+VIC" },
+          { id:"d1-geelong", name:"Geelong Waterfront", type:"attraction", desc:"Explore the stunning Geelong Waterfront with its painted bollards, carousel, and cafés.", stay:60, min:30, max:120, dist:77, drive:60, batt:15, tip:"Walk along Cunningham Pier, see the famous painted bollards.", emoji:"🎡", lat:-38.1499, lng:144.3617, mq:"Geelong+Waterfront,+VIC" },
+          { id:"d1-charge-geelong", name:"Tesla Supercharger Geelong", type:"charge", desc:"Quick top-up before heading into the Great Ocean Road where charging is sparse.", stay:20, min:5, max:60, dist:5, drive:8, batt:1, address:"71 Bellarine Hwy, Newcomb VIC 3219", charge:{type:"Tesla Supercharger V3",stalls:8,kw:250}, tip:"Critical charge! Next Supercharger is in Colac.", emoji:"⚡", lat:-38.1685, lng:144.3892, mq:"71+Bellarine+Hwy,+Newcomb+VIC" },
+          { id:"d1-memorial", name:"Memorial Arch", type:"attraction", desc:"The iconic Great Ocean Road Memorial Arch — gateway to one of the world's most scenic coastal drives. Built by returned soldiers after WWI.", stay:20, min:10, max:40, dist:40, drive:35, batt:10, tip:"Perfect photo opportunity!", emoji:"🏛️", lat:-38.4716, lng:144.1813, mq:"Great+Ocean+Road+Memorial+Arch" },
+          { id:"d1-gor", name:"Great Ocean Road Scenic Drive", type:"attraction", desc:"Drive along the spectacular coastal road, passing through Lorne and Anglesea. Stop at lookouts along the way.", stay:45, min:20, max:90, dist:50, drive:60, batt:15, tip:"Teddy's Lookout near Lorne is spectacular.", emoji:"🌊", lat:-38.5417, lng:143.9767, mq:"Lorne+VIC" },
+          { id:"d1-sleep", name:"6080 Great Ocean Road, Wye River", type:"sleep", desc:"Rest for the night at your accommodation along the Great Ocean Road.", stay:0, min:0, max:0, dist:15, drive:18, batt:5, address:"6080 Great Ocean Road, Wye River VIC 3221", tip:"No charger — will charge at Colac tomorrow.", emoji:"🌙", lat:-38.6358, lng:143.8917, mq:"6080+Great+Ocean+Road,+Wye+River+VIC" },
         ],
       },
       {
@@ -117,13 +117,13 @@
         subtitle: "The iconic landmarks day",
         color: "#14b8a6", gradient: "day-gradient-2", startBattery: 54,
         stops: [
-          { id:"d2-start", name:"6080 Great Ocean Road (Departure)", type:"start", desc:"Start early. Battery carried over from last night.", stay:0, min:0, max:0, dist:0, drive:0, batt:0, tip:"Head to Apollo Bay, then detour to Colac Supercharger.", emoji:"🌅" },
-          { id:"d2-apollo", name:"Apollo Bay", type:"attraction", desc:"Charming seaside town at the foothills of the Otways. Enjoy a coffee, walk along the beach, and explore the harbour.", stay:60, min:30, max:120, dist:30, drive:35, batt:9, tip:"Try the Great Ocean Road Brewhouse.", emoji:"☕" },
-          { id:"d2-charge-colac", name:"Tesla Supercharger Colac", type:"charge", desc:"Important charge stop! Detour inland to Colac Supercharger before continuing to the 12 Apostles.", stay:35, min:10, max:60, dist:58, drive:50, batt:15, address:"144/158 Bromfield St, Colac VIC 3250", charge:{type:"Tesla Supercharger V3",stalls:4,kw:250}, tip:"Essential stop. Grab lunch while charging.", emoji:"⚡" },
-          { id:"d2-gibson", name:"Gibson Steps", type:"attraction", desc:"Descend the cliff staircase to the beach below the 12 Apostles. Walk on the sand between massive limestone cliffs.", stay:45, min:20, max:75, dist:95, drive:75, batt:22, tip:"Check tide times! Beach only accessible at low-to-mid tide.", emoji:"🪜" },
-          { id:"d2-charge-pc", name:"Tesla Supercharger Port Campbell", type:"charge", desc:"Charge up at Port Campbell while exploring the town.", stay:30, min:10, max:60, dist:13, drive:12, batt:3, address:"18 Tregea St, Port Campbell VIC 3269", charge:{type:"Tesla Supercharger V2",stalls:4,kw:150}, tip:"Grab fish & chips while charging.", emoji:"⚡" },
-          { id:"d2-london", name:"London Bridge", type:"attraction", desc:"Once a double-arch rock formation, the bridge collapsed in 1990 leaving two tourists stranded! Now a dramatic single arch.", stay:30, min:15, max:60, dist:27, drive:22, batt:7, tip:"Sunset here is incredible.", emoji:"🌉" },
-          { id:"d2-sleep", name:"Innova Motel, Warrnambool", type:"sleep", desc:"Rest at the Innova Motel in Warrnambool.", stay:0, min:0, max:0, dist:75, drive:55, batt:18, address:"Innova Motel, Warrnambool VIC 3280", tip:"Charge at Warrnambool Supercharger in the morning.", emoji:"🌙" },
+          { id:"d2-start", name:"6080 Great Ocean Road (Departure)", type:"start", desc:"Start early. Battery carried over from last night.", stay:0, min:0, max:0, dist:0, drive:0, batt:0, tip:"Head to Apollo Bay, then detour to Colac Supercharger.", emoji:"🌅", lat:-38.6358, lng:143.8917, mq:"6080+Great+Ocean+Road,+Wye+River+VIC" },
+          { id:"d2-apollo", name:"Apollo Bay", type:"attraction", desc:"Charming seaside town at the foothills of the Otways. Enjoy a coffee, walk along the beach, and explore the harbour.", stay:60, min:30, max:120, dist:30, drive:35, batt:9, tip:"Try the Great Ocean Road Brewhouse.", emoji:"☕", lat:-38.7573, lng:143.6717, mq:"Apollo+Bay+VIC" },
+          { id:"d2-charge-colac", name:"Tesla Supercharger Colac", type:"charge", desc:"Important charge stop! Detour inland to Colac Supercharger before continuing to the 12 Apostles.", stay:35, min:10, max:60, dist:58, drive:50, batt:15, address:"144/158 Bromfield St, Colac VIC 3250", charge:{type:"Tesla Supercharger V3",stalls:4,kw:250}, tip:"Essential stop. Grab lunch while charging.", emoji:"⚡", lat:-38.3335, lng:143.5859, mq:"144+Bromfield+St,+Colac+VIC" },
+          { id:"d2-gibson", name:"Gibson Steps", type:"attraction", desc:"Descend the cliff staircase to the beach below the 12 Apostles. Walk on the sand between massive limestone cliffs.", stay:45, min:20, max:75, dist:95, drive:75, batt:22, tip:"Check tide times! Beach only accessible at low-to-mid tide.", emoji:"🪜", lat:-38.6717, lng:143.1117, mq:"Gibson+Steps,+Port+Campbell+VIC" },
+          { id:"d2-charge-pc", name:"Tesla Supercharger Port Campbell", type:"charge", desc:"Charge up at Port Campbell while exploring the town.", stay:30, min:10, max:60, dist:13, drive:12, batt:3, address:"18 Tregea St, Port Campbell VIC 3269", charge:{type:"Tesla Supercharger V2",stalls:4,kw:150}, tip:"Grab fish & chips while charging.", emoji:"⚡", lat:-38.6186, lng:143.0186, mq:"18+Tregea+St,+Port+Campbell+VIC" },
+          { id:"d2-london", name:"London Bridge", type:"attraction", desc:"Once a double-arch rock formation, the bridge collapsed in 1990 leaving two tourists stranded! Now a dramatic single arch.", stay:30, min:15, max:60, dist:27, drive:22, batt:7, tip:"Sunset here is incredible.", emoji:"🌉", lat:-38.6322, lng:142.9083, mq:"London+Arch,+Port+Campbell+VIC" },
+          { id:"d2-sleep", name:"Innova Motel, Warrnambool", type:"sleep", desc:"Rest at the Innova Motel in Warrnambool.", stay:0, min:0, max:0, dist:75, drive:55, batt:18, address:"Innova Motel, Warrnambool VIC 3280", tip:"Charge at Warrnambool Supercharger in the morning.", emoji:"🌙", lat:-38.3817, lng:142.4867, mq:"Innova+Motel,+Warrnambool+VIC" },
         ],
       },
       {
@@ -132,10 +132,10 @@
         subtitle: "Cross the border into South Australia",
         color: "#a855f7", gradient: "day-gradient-3", startBattery: 35,
         stops: [
-          { id:"d3-charge-wbl", name:"Tesla Supercharger Warrnambool", type:"charge", desc:"Morning charge before the long drive to Mount Gambier. Critical — no Superchargers between here and Mt Gambier.", stay:50, min:10, max:75, dist:3, drive:5, batt:1, address:"21-23 Gateway Rd, Warrnambool VIC 3280", charge:{type:"Tesla Supercharger V3",stalls:6,kw:250}, tip:"CHARGE HIGH! Drive to Mt Gambier is ~270km with no charger.", emoji:"⚡" },
-          { id:"d3-gambier", name:"Mount Gambier — Blue Lake", type:"attraction", desc:"Visit the stunning Blue Lake, a volcanic crater lake that turns vivid blue. Also explore Umpherston Sinkhole garden.", stay:90, min:45, max:180, dist:270, drive:185, batt:65, tip:"Also visit Umpherston Sinkhole (free entry) — a sunken garden.", emoji:"🏔️" },
-          { id:"d3-charge-mg", name:"Tesla Supercharger Mount Gambier", type:"charge", desc:"Charge up at Mount Gambier Supercharger for the next leg.", stay:35, min:10, max:60, dist:3, drive:5, batt:1, address:"1-3 Ramsay Ave, Mount Gambier SA 5290", charge:{type:"Tesla Supercharger V3",stalls:6,kw:250}, tip:"Grab lunch at a nearby restaurant while charging.", emoji:"⚡" },
-          { id:"d3-sleep", name:"Coonawarra Bush Holiday Park", type:"sleep", desc:"Relax at the Coonawarra Bush Holiday Park, in the heart of Australia's famous wine region.", stay:0, min:0, max:0, dist:62, drive:45, batt:14, address:"Coonawarra Bush Holiday Park, Coonawarra SA", tip:"Stop at Penola for wine tasting on the way!", emoji:"🌙" },
+          { id:"d3-charge-wbl", name:"Tesla Supercharger Warrnambool", type:"charge", desc:"Morning charge before the long drive to Mount Gambier. Critical — no Superchargers between here and Mt Gambier.", stay:50, min:10, max:75, dist:3, drive:5, batt:1, address:"21-23 Gateway Rd, Warrnambool VIC 3280", charge:{type:"Tesla Supercharger V3",stalls:6,kw:250}, tip:"CHARGE HIGH! Drive to Mt Gambier is ~270km with no charger.", emoji:"⚡", lat:-38.3667, lng:142.5033, mq:"21+Gateway+Rd,+Warrnambool+VIC" },
+          { id:"d3-gambier", name:"Mount Gambier — Blue Lake", type:"attraction", desc:"Visit the stunning Blue Lake, a volcanic crater lake that turns vivid blue. Also explore Umpherston Sinkhole garden.", stay:90, min:45, max:180, dist:270, drive:185, batt:65, tip:"Also visit Umpherston Sinkhole (free entry) — a sunken garden.", emoji:"🏔️", lat:-37.8333, lng:140.7667, mq:"Blue+Lake,+Mount+Gambier+SA" },
+          { id:"d3-charge-mg", name:"Tesla Supercharger Mount Gambier", type:"charge", desc:"Charge up at Mount Gambier Supercharger for the next leg.", stay:35, min:10, max:60, dist:3, drive:5, batt:1, address:"1-3 Ramsay Ave, Mount Gambier SA 5290", charge:{type:"Tesla Supercharger V3",stalls:6,kw:250}, tip:"Grab lunch at a nearby restaurant while charging.", emoji:"⚡", lat:-37.8276, lng:140.7805, mq:"1+Ramsay+Ave,+Mount+Gambier+SA" },
+          { id:"d3-sleep", name:"Coonawarra Bush Holiday Park", type:"sleep", desc:"Relax at the Coonawarra Bush Holiday Park, in the heart of Australia's famous wine region.", stay:0, min:0, max:0, dist:62, drive:45, batt:14, address:"Coonawarra Bush Holiday Park, Coonawarra SA", tip:"Stop at Penola for wine tasting on the way!", emoji:"🌙", lat:-37.2917, lng:140.8333, mq:"Coonawarra+Bush+Holiday+Park,+SA" },
         ],
       },
       {
@@ -144,13 +144,13 @@
         subtitle: "The big drive home with unique stops",
         color: "#f59e0b", gradient: "day-gradient-4", startBattery: 80,
         stops: [
-          { id:"d4-start", name:"Coonawarra (Departure)", type:"start", desc:"Early start for the long drive home.", stay:0, min:0, max:0, dist:0, drive:0, batt:0, tip:"Start early! ~600km total today.", emoji:"🌅" },
-          { id:"d4-naracoorte", name:"Naracoorte Caves National Park", type:"attraction", desc:"UNESCO World Heritage listed caves with fossil deposits dating back 500,000 years. Take a guided cave tour.", stay:90, min:60, max:150, dist:18, drive:15, batt:5, address:"Naracoorte Caves National Park, SA 5271", tip:"Book Victoria Fossil Cave or Alexandra Cave tour. Allow 60-90 mins.", emoji:"🦴" },
-          { id:"d4-charge-bt", name:"Tesla Supercharger Bordertown", type:"charge", desc:"Essential charge stop before heading into Victoria.", stay:40, min:10, max:60, dist:105, drive:70, batt:25, address:"2 Dukes Hwy, Bordertown SA 5268", charge:{type:"Tesla Supercharger V3",stalls:6,kw:250}, tip:"Good rest stop with nearby amenities.", emoji:"⚡" },
-          { id:"d4-charge-hm", name:"Tesla Supercharger Horsham", type:"charge", desc:"Quick top-up for the Pink Lake detour and drive home.", stay:25, min:10, max:55, dist:115, drive:75, batt:28, address:"36 Darlot St, Horsham VIC 3400", charge:{type:"Tesla Supercharger V3",stalls:6,kw:250}, tip:"Quick charge. Good snack break town.", emoji:"⚡" },
-          { id:"d4-pink", name:"Pink Lake, Dimboola", type:"attraction", desc:"A stunning natural phenomenon — the lake turns pink due to algae and salt. Best on sunny days!", stay:40, min:20, max:75, dist:35, drive:25, batt:8, address:"Pink Lake, Dimboola VIC 3414", tip:"Most pink on hot, sunny days. Walk around for different angles.", emoji:"🩷" },
-          { id:"d4-charge-bal", name:"Tesla Supercharger Ballarat", type:"charge", desc:"Final charge before the home stretch to Melbourne.", stay:25, min:10, max:55, dist:195, drive:130, batt:45, address:"333 Gillies St North, Ballarat VIC 3355", charge:{type:"Tesla Supercharger V3",stalls:8,kw:250}, tip:"Last charge before Melbourne.", emoji:"⚡" },
-          { id:"d4-home", name:"52 Park Street, Melbourne", type:"sleep", desc:"Welcome home! What an incredible 4-day adventure. 🎉", stay:0, min:0, max:0, dist:115, drive:85, batt:25, address:"52 Park Street, South Melbourne VIC 3205", tip:"Home sweet home! Total trip: ~1,500 km", emoji:"🏠" },
+          { id:"d4-start", name:"Coonawarra (Departure)", type:"start", desc:"Early start for the long drive home.", stay:0, min:0, max:0, dist:0, drive:0, batt:0, tip:"Start early! ~600km total today.", emoji:"🌅", lat:-37.2917, lng:140.8333, mq:"Coonawarra+Bush+Holiday+Park,+SA" },
+          { id:"d4-naracoorte", name:"Naracoorte Caves National Park", type:"attraction", desc:"UNESCO World Heritage listed caves with fossil deposits dating back 500,000 years. Take a guided cave tour.", stay:90, min:60, max:150, dist:18, drive:15, batt:5, address:"Naracoorte Caves National Park, SA 5271", tip:"Book Victoria Fossil Cave or Alexandra Cave tour. Allow 60-90 mins.", emoji:"🦴", lat:-36.9567, lng:140.8717, mq:"Naracoorte+Caves+National+Park,+SA" },
+          { id:"d4-charge-bt", name:"Tesla Supercharger Bordertown", type:"charge", desc:"Essential charge stop before heading into Victoria.", stay:40, min:10, max:60, dist:105, drive:70, batt:25, address:"2 Dukes Hwy, Bordertown SA 5268", charge:{type:"Tesla Supercharger V3",stalls:6,kw:250}, tip:"Good rest stop with nearby amenities.", emoji:"⚡", lat:-36.3100, lng:140.7700, mq:"2+Dukes+Hwy,+Bordertown+SA" },
+          { id:"d4-charge-hm", name:"Tesla Supercharger Horsham", type:"charge", desc:"Quick top-up for the Pink Lake detour and drive home.", stay:25, min:10, max:55, dist:115, drive:75, batt:28, address:"36 Darlot St, Horsham VIC 3400", charge:{type:"Tesla Supercharger V3",stalls:6,kw:250}, tip:"Quick charge. Good snack break town.", emoji:"⚡", lat:-36.7150, lng:142.2000, mq:"36+Darlot+St,+Horsham+VIC" },
+          { id:"d4-pink", name:"Pink Lake, Dimboola", type:"attraction", desc:"A stunning natural phenomenon — the lake turns pink due to algae and salt. Best on sunny days!", stay:40, min:20, max:75, dist:35, drive:25, batt:8, address:"Pink Lake, Dimboola VIC 3414", tip:"Most pink on hot, sunny days. Walk around for different angles.", emoji:"🩷", lat:-36.4600, lng:142.0200, mq:"Pink+Lake,+Dimboola+VIC" },
+          { id:"d4-charge-bal", name:"Tesla Supercharger Ballarat", type:"charge", desc:"Final charge before the home stretch to Melbourne.", stay:25, min:10, max:55, dist:195, drive:130, batt:45, address:"333 Gillies St North, Ballarat VIC 3355", charge:{type:"Tesla Supercharger V3",stalls:8,kw:250}, tip:"Last charge before Melbourne.", emoji:"⚡", lat:-37.5537, lng:143.8472, mq:"333+Gillies+St+North,+Ballarat+VIC" },
+          { id:"d4-home", name:"52 Park Street, Melbourne", type:"sleep", desc:"Welcome home! What an incredible 4-day adventure. 🎉", stay:0, min:0, max:0, dist:115, drive:85, batt:25, address:"52 Park Street, South Melbourne VIC 3205", tip:"Home sweet home! Total trip: ~1,500 km", emoji:"🏠", lat:-37.8136, lng:144.9631, mq:"52+Park+Street,+South+Melbourne+VIC" },
         ],
       },
     ];
@@ -158,6 +158,16 @@
     // ── Helpers ──
     function fmt(m) { const h=Math.floor(m/60), r=m%60; return h===0?`${r}min`:r===0?`${h}h`:`${h}h ${r}min`; }
     function timeOfDay(h, addM) { const t=h*60+addM, hr=Math.floor(t/60)%24, mn=t%60, ap=hr>=12?"PM":"AM", h12=hr===0?12:hr>12?hr-12:hr; return `${h12}:${String(mn).padStart(2,'0')} ${ap}`; }
+    function mapEmbed(lat, lng) { return `https://maps.google.com/maps?q=${lat},${lng}&z=13&output=embed`; }
+    function mapLink(mq) { return `https://www.google.com/maps/search/${mq}`; }
+    function dayRouteEmbed(stops) {
+      const pts = stops.map(s => s.mq).join("/");
+      return `https://www.google.com/maps/embed?pb=!1m${stops.length * 2}` + // fallback: use dir URL in iframe
+        ""; // We'll use the dir format instead
+    }
+    function dayRouteUrl(stops) {
+      return "https://www.google.com/maps/dir/" + stops.map(s => s.mq).join("/");
+    }
     function dayStats(stops) {
       let dist=0, drv=0, stay=0, chrg=0, cs=0;
       stops.forEach(s => { dist+=s.dist; drv+=s.drive; stay+=s.stay; if(s.type==="charge"){chrg+=s.stay;cs++;} });
@@ -255,57 +265,70 @@
             {stop.emoji}
           </div>
           <div className="card-glow rounded-xl bg-[#141414] border border-[#2a2a2a] overflow-hidden transition-all hover:border-[#3a3a3a]">
-            <div className="p-3.5 pb-2.5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-base">{stop.emoji}</span>
-                    <h3 className="font-semibold text-white text-sm">{stop.name}</h3>
-                  </div>
-                  <p className="text-[11px] text-gray-400 leading-relaxed">{stop.desc}</p>
-                </div>
-                <div className="text-right shrink-0">
-                  <div className="text-[10px] text-gray-500">Arrive</div>
-                  <div className="text-sm font-semibold text-white">{arrTime}</div>
-                </div>
-              </div>
-            </div>
-            <div className="px-3.5 py-1.5 bg-[#0d0d0d] flex items-center gap-3 flex-wrap text-[11px]">
-              {stop.dist>0 && <span className="text-gray-400">🚗 {stop.dist}km · {fmt(stop.drive)}</span>}
-              {!isSt && <span className="text-gray-400">🔋 <BatteryGauge pct={battArr} /></span>}
-              {isCh && stop.charge && (
-                <span className="ml-auto text-green-400 text-[10px] font-medium px-2 py-0.5 rounded-full bg-green-400/10 border border-green-400/20">
-                  {stop.charge.type} ({stop.charge.kw}kW) → {Math.round(battDep)}%
-                </span>
-              )}
-            </div>
-            {isCh && stop.charge && (
-              <div className="px-3.5 py-2 bg-green-500/5 border-t border-green-500/10">
-                <div className="flex items-center gap-3 flex-wrap text-[11px]">
-                  <span><span className="text-gray-500">Stalls: </span><span className="text-green-400">{stop.charge.stalls}</span></span>
-                  <span><span className="text-gray-500">Charger: </span><span className="text-green-400">{stop.charge.kw} kW</span></span>
-                  <span><span className="text-gray-500">+{Math.round(battDep - battArr)}% </span><span className="text-gray-600">in {fmt(stop.stay)}</span></span>
-                  <span><span className="text-gray-500">Depart: </span><BatteryGauge pct={battDep} /></span>
-                </div>
-                {stop.address && <div className="mt-1 text-[10px] text-gray-500">📍 {stop.address}</div>}
-              </div>
-            )}
-            {adj && (
-              <div className="px-3.5 py-2.5 border-t border-[#2a2a2a]">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[11px] text-gray-400">⏱️ Stay: <span className="text-white font-semibold">{fmt(stop.stay)}</span></span>
-                  <div className="flex gap-1">
-                    <button onClick={()=>onChange(stop.id,Math.max(stop.min,stop.stay-5))} className="w-6 h-6 rounded bg-[#2a2a2a] hover:bg-[#3a3a3a] text-xs font-bold text-gray-300">−</button>
-                    <button onClick={()=>onChange(stop.id,Math.min(stop.max,stop.stay+5))} className="w-6 h-6 rounded bg-[#2a2a2a] hover:bg-[#3a3a3a] text-xs font-bold text-gray-300">+</button>
+            <div className="flex">
+              {/* Left: all existing content */}
+              <div className="flex-1 min-w-0">
+                <div className="p-3.5 pb-2.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-base">{stop.emoji}</span>
+                        <h3 className="font-semibold text-white text-sm">{stop.name}</h3>
+                      </div>
+                      <p className="text-[11px] text-gray-400 leading-relaxed">{stop.desc}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="text-[10px] text-gray-500">Arrive</div>
+                      <div className="text-sm font-semibold text-white">{arrTime}</div>
+                    </div>
                   </div>
                 </div>
-                <input type="range" min={stop.min} max={stop.max} value={stop.stay} onChange={e=>onChange(stop.id,+e.target.value)}
-                  className="w-full" style={{background:`linear-gradient(to right, ${color} ${pct}%, #2a2a2a ${pct}%)`}} />
-                <div className="flex justify-between text-[10px] text-gray-600 mt-0.5"><span>{fmt(stop.min)}</span><span>{fmt(stop.max)}</span></div>
+                <div className="px-3.5 py-1.5 bg-[#0d0d0d] flex items-center gap-3 flex-wrap text-[11px]">
+                  {stop.dist>0 && <span className="text-gray-400">🚗 {stop.dist}km · {fmt(stop.drive)}</span>}
+                  {!isSt && <span className="text-gray-400">🔋 <BatteryGauge pct={battArr} /></span>}
+                  {isCh && stop.charge && (
+                    <span className="ml-auto text-green-400 text-[10px] font-medium px-2 py-0.5 rounded-full bg-green-400/10 border border-green-400/20">
+                      {stop.charge.type} ({stop.charge.kw}kW) → {Math.round(battDep)}%
+                    </span>
+                  )}
+                </div>
+                {isCh && stop.charge && (
+                  <div className="px-3.5 py-2 bg-green-500/5 border-t border-green-500/10">
+                    <div className="flex items-center gap-3 flex-wrap text-[11px]">
+                      <span><span className="text-gray-500">Stalls: </span><span className="text-green-400">{stop.charge.stalls}</span></span>
+                      <span><span className="text-gray-500">Charger: </span><span className="text-green-400">{stop.charge.kw} kW</span></span>
+                      <span><span className="text-gray-500">+{Math.round(battDep - battArr)}% </span><span className="text-gray-600">in {fmt(stop.stay)}</span></span>
+                      <span><span className="text-gray-500">Depart: </span><BatteryGauge pct={battDep} /></span>
+                    </div>
+                    {stop.address && <div className="mt-1 text-[10px] text-gray-500">📍 {stop.address}</div>}
+                  </div>
+                )}
+                {adj && (
+                  <div className="px-3.5 py-2.5 border-t border-[#2a2a2a]">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[11px] text-gray-400">⏱️ Stay: <span className="text-white font-semibold">{fmt(stop.stay)}</span></span>
+                      <div className="flex gap-1">
+                        <button onClick={()=>onChange(stop.id,Math.max(stop.min,stop.stay-5))} className="w-6 h-6 rounded bg-[#2a2a2a] hover:bg-[#3a3a3a] text-xs font-bold text-gray-300">−</button>
+                        <button onClick={()=>onChange(stop.id,Math.min(stop.max,stop.stay+5))} className="w-6 h-6 rounded bg-[#2a2a2a] hover:bg-[#3a3a3a] text-xs font-bold text-gray-300">+</button>
+                      </div>
+                    </div>
+                    <input type="range" min={stop.min} max={stop.max} value={stop.stay} onChange={e=>onChange(stop.id,+e.target.value)}
+                      className="w-full" style={{background:`linear-gradient(to right, ${color} ${pct}%, #2a2a2a ${pct}%)`}} />
+                    <div className="flex justify-between text-[10px] text-gray-600 mt-0.5"><span>{fmt(stop.min)}</span><span>{fmt(stop.max)}</span></div>
+                  </div>
+                )}
+                <CommentsSection stopId={stop.id} />
+                {stop.tip && <div className="px-3.5 py-1.5 border-t border-[#2a2a2a] bg-[#0a0a0a]"><p className="text-[10px] text-yellow-500/80">💡 {stop.tip}</p></div>}
               </div>
-            )}
-            <CommentsSection stopId={stop.id} />
-            {stop.tip && <div className="px-3.5 py-1.5 border-t border-[#2a2a2a] bg-[#0a0a0a]"><p className="text-[10px] text-yellow-500/80">💡 {stop.tip}</p></div>}
+              {/* Right: Google Maps mini */}
+              <a href={mapLink(stop.mq)} target="_blank" rel="noopener noreferrer"
+                className="hidden md:block w-44 shrink-0 border-l border-[#2a2a2a] relative group cursor-pointer">
+                <iframe src={mapEmbed(stop.lat, stop.lng)} className="w-full h-full pointer-events-none" style={{minHeight:"160px",border:0}} loading="lazy" title={stop.name} />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+                  <span className="bg-white text-black text-[10px] font-bold px-2 py-1 rounded shadow">Open in Maps ↗</span>
+                </div>
+              </a>
+            </div>
           </div>
         </div>
       );
@@ -357,6 +380,16 @@
               ))}
             </div>
           </button>
+          {/* Day route map */}
+          <div className="mb-3 rounded-xl overflow-hidden border border-[#2a2a2a] card-glow relative" style={{height:"220px"}}>
+            <iframe
+              src={`https://maps.google.com/maps?saddr=${day.stops[0].mq}&daddr=${day.stops.slice(1).map(s=>s.mq).join("+to:")}&output=embed`}
+              className="w-full h-full" style={{border:0}} loading="lazy" title={`Day ${day.day} route`} />
+            <a href={dayRouteUrl(day.stops)} target="_blank" rel="noopener noreferrer"
+              className="absolute top-2 right-2 bg-black/70 hover:bg-black/90 text-white text-[10px] font-bold px-2.5 py-1.5 rounded-lg border border-white/10 transition-colors z-10">
+              Open route in Maps ↗
+            </a>
+          </div>
           {open && <div className="ml-2">{day.stops.map((s,i)=><StopCard key={s.id} stop={s} battArr={levels[i].arr} battDep={levels[i].dep} arrTime={levels[i].t} onChange={onChange} color={day.color} />)}</div>}
         </div>
       );
