@@ -250,11 +250,6 @@
             <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{background: statusColor + "22", color: statusColor, border: `1px solid ${statusColor}44`}}>
               {status}
             </span>
-            <button onClick={doFetch} disabled={loading}
-              className={`ml-auto text-[10px] transition-colors ${loading ? "animate-spin text-gray-500" : "text-blue-400 hover:text-blue-300"}`}
-              title="Refresh from Open Charge Map">
-              🔄
-            </button>
           </div>
           <div className="flex items-center gap-3 flex-wrap text-[10px]">
             {connections.map((c, i) => (
@@ -262,14 +257,6 @@
                 ⚡ {c.qty}× {c.type} {c.kw > 0 ? `(${c.kw}kW)` : ""}
               </span>
             ))}
-          </div>
-          <div className="flex items-center gap-2 mt-1 text-[9px] text-gray-600">
-            <span>Source: {source}</span>
-            {fetchedAt && <span>· {loading ? "Refreshing..." : `Updated: ${fetchedAt.toLocaleTimeString()}`}</span>}
-            {hasOcm && ocmData.lastVerified && <span>· Verified: {ocmData.lastVerified}</span>}
-          </div>
-          <div className="mt-1 text-[9px] text-gray-600 italic">
-            💡 For live stall availability (e.g. 4/6), check the Tesla app or Google Maps.
           </div>
         </div>
       );
