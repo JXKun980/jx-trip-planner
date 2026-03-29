@@ -418,7 +418,7 @@
                 </div>
                 {/* Right: Google Maps link */}
                 <a href={mapLink(stop)} target="_blank" rel="noopener noreferrer"
-                  className="hidden md:flex w-10 shrink-0 border-l border-[#2a2a2a] items-center justify-center bg-[#0d0d0d] hover:bg-[#1a1a1a] transition-colors group cursor-pointer"
+                  className="hidden md:flex w-20 shrink-0 border-l border-[#2a2a2a] items-center justify-center bg-[#0d0d0d] hover:bg-[#1a1a1a] transition-colors group cursor-pointer"
                   title="Open in Google Maps">
                   <div className="flex flex-col items-center gap-1 opacity-40 group-hover:opacity-100 transition-opacity">
                     <span className="text-lg">📍</span>
@@ -508,20 +508,21 @@
     function App() {
       const [days, setDays] = useState(initialDays);
       const [startHours, setStartHours] = useState([8,7,7,6]);
+      const [homeBattery, setHomeBattery] = useState(100);
 
       // Chain battery across days: each day's startBattery = previous day's ending battery
       const daysWithBattery = useMemo(() => {
         const result = [];
         for (let i = 0; i < days.length; i++) {
           if (i === 0) {
-            result.push(days[i]); // Day 1 starts at 100%
+            result.push({ ...days[i], startBattery: homeBattery });
           } else {
             const prevEnd = simulateDayEndBattery(result[i - 1]);
             result.push({ ...days[i], startBattery: prevEnd });
           }
         }
         return result;
-      }, [days]);
+      }, [days, homeBattery]);
 
       const onChange = (id, val) => setDays(p=>p.map(d=>({...d,stops:d.stops.map(s=>s.id===id?{...s,stay:val}:s)})));
       const onStartH = (i, h) => setStartHours(p=>{const n=[...p];n[i]=h;return n;});
@@ -551,6 +552,12 @@
                 {[`🚗 ${VEHICLE_INFO.model}`,`🔋 ${VEHICLE_INFO.battery}`,`📏 ~${VEHICLE_INFO.rangeReal}km real range`].map(t=>(
                   <span key={t} className="px-2 py-1 rounded bg-[#1a1a1a] border border-[#2a2a2a]">{t}</span>
                 ))}
+                <span className="px-2 py-1 rounded bg-[#1a1a1a] border border-[#2a2a2a] flex items-center gap-1.5">
+                  🏠 Start battery:
+                  <input type="range" min={20} max={100} value={homeBattery} onChange={e=>setHomeBattery(+e.target.value)}
+                    className="w-16 h-1" style={{background:`linear-gradient(to right, #22c55e ${homeBattery}%, #2a2a2a ${homeBattery}%)`}} />
+                  <span className="font-bold text-white w-8 text-right">{homeBattery}%</span>
+                </span>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 {[[totals.d.toLocaleString(),"Total km","white"],[fmt(totals.dr),"Driving","white"],[fmt(totals.s),"Activities","#60a5fa"],[String(totals.cs),"Charge stops","#4ade80"],["4","Days","#c084fc"]].map(([v,l,c])=>(
