@@ -9,6 +9,8 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     tailwind.config = {
       theme: {
@@ -477,11 +479,143 @@
       );
     }
 
+    // Reverse geocode via Nominatim
+    async function reverseGeocode(lat, lng) {
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
+        const data = await res.json();
+        return data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+      } catch { return `${lat.toFixed(5)}, ${lng.toFixed(5)}`; }
+    }
+
+    function AddressEditModal({ stop, prevStop, onSave, onCancel }) {
+      const [addr, setAddr] = useState(stop.address || "");
+      const [lat, setLat] = useState(stop.lat || -37.8136);
+      const [lng, setLng] = useState(stop.lng || 144.9631);
+      const [name, setName] = useState(stop.name || "");
+      const [suggestions, setSuggestions] = useState([]);
+      const [showSugg, setShowSugg] = useState(false);
+      const [timer, setTimer] = useState(null);
+      const mapRef = React.useRef(null);
+      const mapInstanceRef = React.useRef(null);
+      const markerRef = React.useRef(null);
+      const inputRef = React.useRef(null);
+
+      // Initialize Leaflet map
+      React.useEffect(() => {
+        if (!mapRef.current || mapInstanceRef.current) return;
+        const map = L.map(mapRef.current, { zoomControl: true }).setView([lat, lng], 14);
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: '© OpenStreetMap',
+        }).addTo(map);
+        const marker = L.marker([lat, lng], { draggable: true }).addTo(map);
+        marker.on("dragend", async () => {
+          const pos = marker.getLatLng();
+          setLat(pos.lat); setLng(pos.lng);
+          const address = await reverseGeocode(pos.lat, pos.lng);
+          setAddr(address);
+        });
+        mapInstanceRef.current = map;
+        markerRef.current = marker;
+        // Fix tile rendering after modal appears
+        setTimeout(() => map.invalidateSize(), 200);
+        return () => { map.remove(); mapInstanceRef.current = null; };
+      }, []);
+
+      // Move map/marker when lat/lng change from search
+      const moveMap = (newLat, newLng) => {
+        setLat(newLat); setLng(newLng);
+        if (mapInstanceRef.current) mapInstanceRef.current.setView([newLat, newLng], 15);
+        if (markerRef.current) markerRef.current.setLatLng([newLat, newLng]);
+      };
+
+      const handleInput = (val) => {
+        setAddr(val);
+        if (timer) clearTimeout(timer);
+        setTimer(setTimeout(async () => {
+          const s = await fetchSuggestions(val);
+          setSuggestions(s); setShowSugg(s.length > 0);
+        }, 300));
+      };
+
+      const pickSuggestion = (s) => {
+        setAddr(s.address); setName(s.name || s.address.split(",")[0]);
+        setShowSugg(false);
+        if (s.lat && s.lng) moveMap(s.lat, s.lng);
+      };
+
+      const handleDone = () => {
+        const updates = { address: addr, name: name || addr.split(",")[0], lat, lng, mq: addr.replace(/\s+/g, "+") };
+        if (isChargerName(addr) || isChargerName(name)) {
+          updates.type = "charge"; updates.charge = makeChargeDefaults(); updates.emoji = "⚡";
+          updates.poi = (name || addr).replace(/\s+/g, "+");
+        }
+        if (prevStop && prevStop.lat) {
+          const straight = haversine(prevStop.lat, prevStop.lng, lat, lng);
+          Object.assign(updates, estimateDriveStats(straight));
+        }
+        onSave(updates);
+      };
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onCancel}>
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <div className="relative bg-[#141414] border border-[#2a2a2a] rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden" onClick={e=>e.stopPropagation()}>
+            {/* Header */}
+            <div className="px-5 pt-4 pb-2">
+              <h3 className="text-base font-bold text-white mb-3">📍 Edit Location</h3>
+              {/* Search bar */}
+              <div className="relative">
+                <input ref={inputRef} value={addr} onChange={e=>handleInput(e.target.value)}
+                  onFocus={()=>{ if (suggestions.length) setShowSugg(true); }}
+                  placeholder="Search for an address or place..."
+                  className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:border-blue-500/50 focus:outline-none" />
+                {showSugg && (
+                  <div className="absolute z-40 top-full left-0 right-0 mt-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg shadow-xl max-h-40 overflow-y-auto">
+                    {suggestions.map((s, i) => (
+                      <button key={i} onClick={()=>pickSuggestion(s)}
+                        className="w-full text-left px-3 py-2 text-[11px] text-gray-300 hover:bg-[#2a2a2a] hover:text-white transition-colors border-b border-[#222] last:border-0 flex items-start gap-2">
+                        <span className="text-gray-500 shrink-0 mt-0.5">📍</span>
+                        <span className="leading-snug">{s.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Name field */}
+              <input value={name} onChange={e=>setName(e.target.value)} placeholder="Stop name"
+                className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg px-3 py-1.5 text-[11px] text-gray-300 mt-2 focus:border-blue-500/50 focus:outline-none" />
+            </div>
+            {/* Map */}
+            <div ref={mapRef} style={{height:"320px",width:"100%"}} className="border-t border-b border-[#2a2a2a]" />
+            {/* Coordinates display */}
+            <div className="px-5 py-1.5 text-[10px] text-gray-500 flex gap-3">
+              <span>Lat: {lat.toFixed(5)}</span>
+              <span>Lng: {lng.toFixed(5)}</span>
+              <span className="text-gray-600 ml-auto">Drag the pin to change location</span>
+            </div>
+            {/* Footer buttons */}
+            <div className="px-5 py-3 flex justify-end gap-2 border-t border-[#2a2a2a]">
+              <button onClick={onCancel}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-[#2a2a2a] hover:bg-[#3a3a3a] text-gray-300 transition-colors">
+                Cancel
+              </button>
+              <button onClick={handleDone}
+                className="px-5 py-2 rounded-lg text-sm font-bold bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/50 text-blue-400 transition-colors">
+                ✓ Done
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     function StopCard({stop, battArr, battDep, arrTime, onChange, color, homeBattery, onHomeBatteryChange, editMode, onDelete, onEditField, prevStop}) {
       const isCh=stop.type==="charge", isSl=stop.type==="sleep", isSt=stop.type==="start";
       const adj = !isSt && !isSl;
       const dotBg = isCh?"#22c55e":isSl?"#6366f1":isSt?color:"#374151";
       const dotBorder = isCh?"#22c55e":color;
+      const [showAddrModal, setShowAddrModal] = useState(false);
       return (
         <div className="flex gap-0 pb-5">
           {/* Left column: time + timeline + duration control */}
@@ -527,16 +661,25 @@
                   <div className="p-3.5 pb-2.5">
                     {editMode ? (
                       <div className="space-y-1.5">
-                        {/* Address on top — autocomplete with suggestions */}
-                        <AddressAutocomplete
-                          value={stop.address||""}
-                          onChange={val => onEditField(stop.id, { address: val, mq: val.replace(/\s+/g, "+") })}
-                          onSelect={updates => onEditField(stop.id, updates)}
-                          placeholder="📍 Search for an address or place..."
-                          className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg px-3 py-2 text-sm text-white font-medium placeholder-gray-600 focus:border-blue-500/50 focus:outline-none"
-                          prevStop={prevStop}
-                          stopId={stop.id}
-                        />
+                        {/* Address button — opens modal */}
+                        <button onClick={()=>setShowAddrModal(true)}
+                          className="w-full bg-[#0a0a0a] border border-[#2a2a2a] hover:border-blue-500/40 rounded-lg px-3 py-2.5 text-left transition-colors group">
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">📍</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[10px] text-blue-400 font-medium group-hover:text-blue-300">Edit Address</div>
+                              <div className="text-sm text-white font-medium truncate">{stop.address || stop.name || "Set location..."}</div>
+                            </div>
+                            <span className="text-gray-500 group-hover:text-blue-400 text-sm">→</span>
+                          </div>
+                        </button>
+                        {showAddrModal && (
+                          <AddressEditModal
+                            stop={stop} prevStop={prevStop}
+                            onSave={(updates) => { onEditField(stop.id, updates); setShowAddrModal(false); }}
+                            onCancel={()=>setShowAddrModal(false)}
+                          />
+                        )}
                         {/* Name + type row */}
                         <div className="flex gap-1.5">
                           <select value={stop.type} onChange={e => {
