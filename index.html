@@ -1027,12 +1027,55 @@
       const [startTimes, setStartTimes] = useState([{h:8,m:0},{h:7,m:0},{h:7,m:0},{h:6,m:0}]);
       const [homeBattery, setHomeBattery] = useState(100);
       const [editMode, setEditMode] = useState(false);
-      const editSnapshot = React.useRef(null);
       const [dragDayNum, setDragDayNum] = useState(null);
       const [hoverDayIdx, setHoverDayIdx] = useState(null);
       const [heroTitle, setHeroTitle] = useState(() => localStorage.getItem("heroTitle") || "Great Ocean Road");
       const [heroSubtitle, setHeroSubtitle] = useState(() => localStorage.getItem("heroSubtitle") || "& Beyond Adventure");
       const [heroSnippet, setHeroSnippet] = useState(() => localStorage.getItem("heroSnippet") || "Melbourne → Geelong → Great Ocean Road → Warrnambool → Mount Gambier → Naracoorte → Pink Lake → Home");
+
+      // Undo/redo history (max 10 steps)
+      const editHistory = React.useRef([]);
+      const historyIdx = React.useRef(-1);
+      const isUndoRedo = React.useRef(false);
+      const [canUndo, setCanUndo] = useState(false);
+      const [canRedo, setCanRedo] = useState(false);
+
+      const getSnapshot = () => JSON.parse(JSON.stringify({ days, heroTitle, heroSubtitle, heroSnippet }));
+      const applySnapshot = (snap) => {
+        isUndoRedo.current = true;
+        setDays(snap.days); setHeroTitle(snap.heroTitle); setHeroSubtitle(snap.heroSubtitle); setHeroSnippet(snap.heroSnippet);
+        setTimeout(() => { isUndoRedo.current = false; }, 50);
+      };
+
+      // Record history on state changes during edit mode
+      React.useEffect(() => {
+        if (!editMode || isUndoRedo.current) return;
+        const snap = getSnapshot();
+        const h = editHistory.current;
+        // Trim any redo states ahead of current position
+        editHistory.current = h.slice(0, historyIdx.current + 1);
+        editHistory.current.push(snap);
+        if (editHistory.current.length > 11) editHistory.current.shift(); // keep max 10 + initial
+        historyIdx.current = editHistory.current.length - 1;
+        setCanUndo(historyIdx.current > 0);
+        setCanRedo(false);
+      }, [days, heroTitle, heroSubtitle, heroSnippet, editMode]);
+
+      const onUndo = () => {
+        if (historyIdx.current <= 0) return;
+        historyIdx.current--;
+        applySnapshot(editHistory.current[historyIdx.current]);
+        setCanUndo(historyIdx.current > 0);
+        setCanRedo(true);
+      };
+
+      const onRedo = () => {
+        if (historyIdx.current >= editHistory.current.length - 1) return;
+        historyIdx.current++;
+        applySnapshot(editHistory.current[historyIdx.current]);
+        setCanUndo(historyIdx.current > 0);
+        setCanRedo(historyIdx.current < editHistory.current.length - 1);
+      };
 
       React.useEffect(() => { localStorage.setItem("heroTitle", heroTitle); }, [heroTitle]);
       React.useEffect(() => { localStorage.setItem("heroSubtitle", heroSubtitle); }, [heroSubtitle]);
@@ -1143,19 +1186,12 @@
 
       const toggleEditMode = () => {
         if (!editMode) {
-          // Entering edit mode — save snapshot
-          editSnapshot.current = { days: JSON.parse(JSON.stringify(days)), heroTitle, heroSubtitle, heroSnippet };
+          // Entering edit mode — initialize history with current state
+          editHistory.current = [getSnapshot()];
+          historyIdx.current = 0;
+          setCanUndo(false); setCanRedo(false);
         }
         setEditMode(!editMode);
-      };
-
-      const onRevertChanges = () => {
-        if (editSnapshot.current) {
-          setDays(editSnapshot.current.days);
-          setHeroTitle(editSnapshot.current.heroTitle);
-          setHeroSubtitle(editSnapshot.current.heroSubtitle);
-          setHeroSnippet(editSnapshot.current.heroSnippet);
-        }
       };
 
       const onEditDay = (dayNum, updates) => setDays(p => p.map(d => d.day === dayNum ? { ...d, ...updates } : d));
@@ -1335,12 +1371,21 @@
 
           {/* Floating buttons */}
           <div className="fixed bottom-6 right-6 flex flex-col items-center gap-3 z-30">
-            {editMode && (
+            {editMode && canRedo && (
               <div className="relative group">
-                <button onClick={onRevertChanges}
-                  className="w-11 h-11 rounded-full shadow-xl flex items-center justify-center text-base bg-red-500/20 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/30 hover:border-red-400/50 transition-all">↺</button>
+                <button onClick={onRedo}
+                  className="w-14 h-14 rounded-full shadow-xl flex items-center justify-center text-xl bg-[#1a1a1a] hover:bg-[#2a2a2a] text-blue-400 hover:text-blue-300 border border-blue-500/30 hover:border-blue-400/50 transition-all">↻</button>
                 <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] text-[10px] text-gray-300 whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg">
-                  Revert changes
+                  Redo change
+                </div>
+              </div>
+            )}
+            {editMode && canUndo && (
+              <div className="relative group">
+                <button onClick={onUndo}
+                  className="w-14 h-14 rounded-full shadow-xl flex items-center justify-center text-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/30 hover:border-red-400/50 transition-all">↺</button>
+                <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] text-[10px] text-gray-300 whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg">
+                  Revert last change
                 </div>
               </div>
             )}
