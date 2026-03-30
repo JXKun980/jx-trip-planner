@@ -930,6 +930,7 @@
             </div>
           )}
           {open && <div className="ml-2">
+            {editMode && day.stops.length === 0 && <AddStopButton onClick={()=>onAddStop(day.day, 0)} />}
             {day.stops.map((s,i)=>(
               <React.Fragment key={s.id}>
                 <div
