@@ -572,7 +572,7 @@
                   placeholder="Search for an address or place..."
                   className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:border-blue-500/50 focus:outline-none" />
                 {showSugg && (
-                  <div className="absolute z-40 top-full left-0 right-0 mt-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg shadow-xl max-h-40 overflow-y-auto">
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg shadow-xl max-h-40 overflow-y-auto" style={{zIndex:2000}}>
                     {suggestions.map((s, i) => (
                       <button key={i} onClick={()=>pickSuggestion(s)}
                         className="w-full text-left px-3 py-2 text-[11px] text-gray-300 hover:bg-[#2a2a2a] hover:text-white transition-colors border-b border-[#222] last:border-0 flex items-start gap-2">
