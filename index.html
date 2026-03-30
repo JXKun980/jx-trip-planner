@@ -842,10 +842,14 @@
         setDragId(null); setHoverIdx(null);
       };
 
-      const DragHandle = ({onStart}) => (
+      const DragHandle = ({stopId}) => (
         <div className="flex items-center justify-center py-1.5 cursor-grab active:cursor-grabbing bg-[#0d0d0d] hover:bg-[#1a1a1a] border-b border-[#2a2a2a] transition-colors rounded-t-xl"
           draggable="true"
-          onDragStart={onStart}
+          onDragStart={e => {
+            e.dataTransfer.setData("stopId", stopId);
+            e.dataTransfer.effectAllowed = "move";
+            requestAnimationFrame(() => setDragId(stopId));
+          }}
           onDragEnd={()=>{ setDragId(null); setHoverIdx(null); }}>
           <div className="flex flex-col gap-[3px] opacity-40">
             <div className="w-5 h-[2px] bg-gray-400 rounded" />
@@ -963,7 +967,7 @@
                 {dragId && <DropZone idx={i} />}
                 <div className={dragId === s.id ? "opacity-30" : ""}>
                   <StopCard stop={s} battArr={levels[i].arr} battDep={levels[i].dep} arrTime={levels[i].t} onChange={onChange} color={day.color} homeBattery={homeBattery} onHomeBatteryChange={onHomeBatteryChange} editMode={editMode} onDelete={onDelete} onEditField={onEditField} prevStop={i > 0 ? day.stops[i-1] : null}
-                    dragHandle={editMode ? <DragHandle onStart={()=>setDragId(s.id)} /> : null} />
+                    dragHandle={editMode ? <DragHandle stopId={s.id} /> : null} />
                 </div>
                 {!dragId && editMode && <AddStopButton onClick={()=>onAddStop(day.day, i + 1)} />}
               </React.Fragment>
