@@ -634,10 +634,6 @@
               <div className="text-[9px] text-gray-500 uppercase tracking-wider">Arrive</div>
               <div className="text-[11px] font-bold text-white">{arrTime}</div>
             </div>
-            <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] shrink-0 z-10 ${isCh?"charge-pulse":""}`}
-                 style={{background:dotBg, border:`2px solid ${dotBorder}`}}>
-              {stop.emoji}
-            </div>
             {adj ? (
               <div className="flex flex-col items-center flex-1 py-1">
                 <div className="w-[2px] flex-1" style={{background:`${color}44`}} />
@@ -1373,7 +1369,7 @@
           <div className="fixed bottom-6 right-6 flex flex-col items-center gap-3 z-30">
             {editMode && canUndo && (
               <div className="relative group">
-                <button onClick={() => { if (editHistory.current.length > 0) { historyIdx.current = 0; applySnapshot(editHistory.current[0]); setCanUndo(false); setCanRedo(editHistory.current.length > 1); }}}
+                <button onClick={() => { if (editHistory.current.length > 0) { historyIdx.current = 0; applySnapshot(editHistory.current[0]); setCanUndo(false); setCanRedo(false); setEditMode(false); }}}
                   className="w-14 h-14 rounded-full shadow-xl flex items-center justify-center text-xl bg-red-500 hover:bg-red-400 text-white transition-all">✕</button>
                 <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] text-[10px] text-gray-300 whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg">
                   Discard all changes
