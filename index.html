@@ -1371,6 +1371,15 @@
 
           {/* Floating buttons */}
           <div className="fixed bottom-6 right-6 flex flex-col items-center gap-3 z-30">
+            {editMode && canUndo && (
+              <div className="relative group">
+                <button onClick={() => { if (editHistory.current.length > 0) { historyIdx.current = 0; applySnapshot(editHistory.current[0]); setCanUndo(false); setCanRedo(editHistory.current.length > 1); }}}
+                  className="w-14 h-14 rounded-full shadow-xl flex items-center justify-center text-xl bg-red-500 hover:bg-red-400 text-white transition-all">✕</button>
+                <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] text-[10px] text-gray-300 whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg">
+                  Discard all changes
+                </div>
+              </div>
+            )}
             {editMode && canRedo && (
               <div className="relative group">
                 <button onClick={onRedo}
@@ -1385,7 +1394,7 @@
                 <button onClick={onUndo}
                   className="w-14 h-14 rounded-full shadow-xl flex items-center justify-center text-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/30 hover:border-red-400/50 transition-all">↺</button>
                 <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] text-[10px] text-gray-300 whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg">
-                  Revert last change
+                  Undo last change
                 </div>
               </div>
             )}
