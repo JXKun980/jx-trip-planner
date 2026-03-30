@@ -1013,43 +1013,55 @@
       React.useEffect(() => { localStorage.setItem("heroSnippet", heroSnippet); }, [heroSnippet]);
 
       // Auto-scroll when dragging near viewport edges
+      // (Chrome/Edge block scroll wheel during HTML5 drag, so edge-scroll is the only way)
       React.useEffect(() => {
         let scrollRAF = null;
-        const EDGE = 80; // pixels from edge to trigger scroll
-        const SPEED = 12; // scroll speed
+        let scrollSpeed = 0;
+        const EDGE = 150; // large zone for easy scrolling
+        const MAX_SPEED = 20;
 
-        const handleDragOver = (e) => {
-          const y = e.clientY;
-          const h = window.innerHeight;
-          if (scrollRAF) cancelAnimationFrame(scrollRAF);
-          if (y < EDGE) {
-            const intensity = 1 - y / EDGE;
-            (function scroll() { window.scrollBy(0, -SPEED * intensity); scrollRAF = requestAnimationFrame(scroll); })();
-          } else if (y > h - EDGE) {
-            const intensity = 1 - (h - y) / EDGE;
-            (function scroll() { window.scrollBy(0, SPEED * intensity); scrollRAF = requestAnimationFrame(scroll); })();
+        const doScroll = () => {
+          if (scrollSpeed !== 0) {
+            window.scrollBy(0, scrollSpeed);
+            scrollRAF = requestAnimationFrame(doScroll);
           }
         };
 
-        const stopScroll = () => { if (scrollRAF) { cancelAnimationFrame(scrollRAF); scrollRAF = null; } };
+        const handleDragOver = (e) => {
+          e.preventDefault();
+          const y = e.clientY;
+          const h = window.innerHeight;
+          let newSpeed = 0;
+          if (y < EDGE) {
+            newSpeed = -MAX_SPEED * Math.pow(1 - y / EDGE, 1.5);
+          } else if (y > h - EDGE) {
+            newSpeed = MAX_SPEED * Math.pow(1 - (h - y) / EDGE, 1.5);
+          }
+          if (newSpeed !== 0 && scrollSpeed === 0) {
+            scrollSpeed = newSpeed;
+            scrollRAF = requestAnimationFrame(doScroll);
+          } else {
+            scrollSpeed = newSpeed;
+          }
+          if (newSpeed === 0 && scrollRAF) {
+            cancelAnimationFrame(scrollRAF);
+            scrollRAF = null;
+            scrollSpeed = 0;
+          }
+        };
 
-        // Enable scroll wheel during drag (Chrome/Edge block it by default)
-        let isDragging = false;
-        const onDragStart = () => { isDragging = true; };
-        const onDragEndGlobal = () => { isDragging = false; stopScroll(); };
-        const onWheel = (e) => { if (isDragging) { window.scrollBy(0, e.deltaY); } };
+        const stopScroll = () => {
+          scrollSpeed = 0;
+          if (scrollRAF) { cancelAnimationFrame(scrollRAF); scrollRAF = null; }
+        };
 
         window.addEventListener("dragover", handleDragOver);
-        window.addEventListener("dragstart", onDragStart, true);
-        window.addEventListener("dragend", onDragEndGlobal);
-        window.addEventListener("drop", onDragEndGlobal);
-        window.addEventListener("wheel", onWheel, { passive: true });
+        window.addEventListener("dragend", stopScroll);
+        window.addEventListener("drop", stopScroll);
         return () => {
           window.removeEventListener("dragover", handleDragOver);
-          window.removeEventListener("dragstart", onDragStart, true);
-          window.removeEventListener("dragend", onDragEndGlobal);
-          window.removeEventListener("drop", onDragEndGlobal);
-          window.removeEventListener("wheel", onWheel);
+          window.removeEventListener("dragend", stopScroll);
+          window.removeEventListener("drop", stopScroll);
           stopScroll();
         };
       }, []);
