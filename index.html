@@ -1033,13 +1033,23 @@
 
         const stopScroll = () => { if (scrollRAF) { cancelAnimationFrame(scrollRAF); scrollRAF = null; } };
 
+        // Enable scroll wheel during drag (Chrome/Edge block it by default)
+        let isDragging = false;
+        const onDragStart = () => { isDragging = true; };
+        const onDragEndGlobal = () => { isDragging = false; stopScroll(); };
+        const onWheel = (e) => { if (isDragging) { window.scrollBy(0, e.deltaY); } };
+
         window.addEventListener("dragover", handleDragOver);
-        window.addEventListener("dragend", stopScroll);
-        window.addEventListener("drop", stopScroll);
+        window.addEventListener("dragstart", onDragStart, true);
+        window.addEventListener("dragend", onDragEndGlobal);
+        window.addEventListener("drop", onDragEndGlobal);
+        window.addEventListener("wheel", onWheel, { passive: true });
         return () => {
           window.removeEventListener("dragover", handleDragOver);
-          window.removeEventListener("dragend", stopScroll);
-          window.removeEventListener("drop", stopScroll);
+          window.removeEventListener("dragstart", onDragStart, true);
+          window.removeEventListener("dragend", onDragEndGlobal);
+          window.removeEventListener("drop", onDragEndGlobal);
+          window.removeEventListener("wheel", onWheel);
           stopScroll();
         };
       }, []);
