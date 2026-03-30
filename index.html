@@ -646,12 +646,12 @@
                 <button onClick={()=>onChange(stop.id,Math.max(stop.min,stop.stay-5))}
                   className="w-5 h-5 rounded-full bg-[#2a2a2a] hover:bg-[#3a3a3a] text-[10px] font-bold text-gray-300 flex items-center justify-center shrink-0 my-0.5 transition-colors">−</button>
                 <div className="w-[2px] flex-1" style={{background:`${color}22`}} />
-                {isLast && <div className="text-sm shrink-0 mt-0.5">🌙</div>}
+                {isLast && <div className="w-6 h-6 rounded-full bg-[#1e1b4b] border-2 border-[#4338ca] flex items-center justify-center text-[10px] shrink-0 mt-1">🌙</div>}
               </div>
             ) : (
               <div className="flex flex-col items-center flex-1 py-1">
                 <div className="w-[2px] flex-1" style={{background:`${color}22`}} />
-                {isLast && <div className="text-sm shrink-0 mt-0.5">🌙</div>}
+                {isLast && <div className="w-6 h-6 rounded-full bg-[#1e1b4b] border-2 border-[#4338ca] flex items-center justify-center text-[10px] shrink-0 mt-1">🌙</div>}
               </div>
             )}
           </div>
