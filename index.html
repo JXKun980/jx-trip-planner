@@ -1018,18 +1018,48 @@
       return b;
     }
 
+    // ── Share/Export/Import helpers ──
+    function encodeTrip(data) {
+      return btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+    }
+    function decodeTrip(str) {
+      return JSON.parse(decodeURIComponent(escape(atob(str))));
+    }
+    function loadFromHash() {
+      try {
+        const hash = window.location.hash.slice(1);
+        if (hash && hash.startsWith("trip=")) return decodeTrip(hash.slice(5));
+      } catch {}
+      return null;
+    }
+
     function App() {
-      const [days, setDays] = useState(() => {
-        try { const s = localStorage.getItem("tripDays"); return s ? JSON.parse(s) : initialDays; } catch { return initialDays; }
-      });
+      // Load from URL hash first, then localStorage, then defaults
+      const initialLoad = useMemo(() => {
+        const fromHash = loadFromHash();
+        if (fromHash) return fromHash;
+        try {
+          const s = localStorage.getItem("tripDays");
+          if (s) return {
+            days: JSON.parse(s),
+            heroTitle: localStorage.getItem("heroTitle") || "Great Ocean Road",
+            heroSubtitle: localStorage.getItem("heroSubtitle") || "& Beyond Adventure",
+            heroSnippet: localStorage.getItem("heroSnippet") || "Melbourne → Geelong → Great Ocean Road → Warrnambool → Mount Gambier → Naracoorte → Pink Lake → Home",
+          };
+        } catch {}
+        return null;
+      }, []);
+
+      const [days, setDays] = useState(() => initialLoad?.days || initialDays);
       const [startTimes, setStartTimes] = useState([{h:8,m:0},{h:7,m:0},{h:7,m:0},{h:6,m:0}]);
       const [homeBattery, setHomeBattery] = useState(100);
       const [editMode, setEditMode] = useState(false);
+      const [shareMsg, setShareMsg] = useState(null);
       const [dragDayNum, setDragDayNum] = useState(null);
       const [hoverDayIdx, setHoverDayIdx] = useState(null);
-      const [heroTitle, setHeroTitle] = useState(() => localStorage.getItem("heroTitle") || "Great Ocean Road");
-      const [heroSubtitle, setHeroSubtitle] = useState(() => localStorage.getItem("heroSubtitle") || "& Beyond Adventure");
-      const [heroSnippet, setHeroSnippet] = useState(() => localStorage.getItem("heroSnippet") || "Melbourne → Geelong → Great Ocean Road → Warrnambool → Mount Gambier → Naracoorte → Pink Lake → Home");
+      const [heroTitle, setHeroTitle] = useState(() => initialLoad?.heroTitle || localStorage.getItem("heroTitle") || "Great Ocean Road");
+      const [heroSubtitle, setHeroSubtitle] = useState(() => initialLoad?.heroSubtitle || localStorage.getItem("heroSubtitle") || "& Beyond Adventure");
+      const [heroSnippet, setHeroSnippet] = useState(() => initialLoad?.heroSnippet || localStorage.getItem("heroSnippet") || "Melbourne → Geelong → Great Ocean Road → Warrnambool → Mount Gambier → Naracoorte → Pink Lake → Home");
 
       // Undo/redo history (max 10 steps)
       const editHistory = React.useRef([]);
@@ -1167,6 +1197,50 @@
 
       const onEditField = (id, updates) => setDays(p=>p.map(d=>({...d,stops:d.stops.map(s=>s.id===id?{...s,...updates}:s)})));
 
+      const fileInputRef = React.useRef(null);
+
+      const onShareURL = () => {
+        const data = { days, heroTitle, heroSubtitle, heroSnippet };
+        const encoded = encodeTrip(data);
+        const url = window.location.origin + window.location.pathname + "#trip=" + encoded;
+        navigator.clipboard.writeText(url).then(() => {
+          setShareMsg("✓ Link copied to clipboard!");
+          setTimeout(() => setShareMsg(null), 3000);
+        }).catch(() => {
+          prompt("Copy this link:", url);
+        });
+      };
+
+      const onExportJSON = () => {
+        const data = { days, heroTitle, heroSubtitle, heroSnippet, startTimes, homeBattery };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `trip-plan-${new Date().toISOString().slice(0,10)}.json`;
+        a.click();
+      };
+
+      const onImportJSON = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const data = JSON.parse(reader.result);
+            if (data.days) setDays(data.days);
+            if (data.heroTitle) setHeroTitle(data.heroTitle);
+            if (data.heroSubtitle) setHeroSubtitle(data.heroSubtitle);
+            if (data.heroSnippet) setHeroSnippet(data.heroSnippet);
+            if (data.startTimes) setStartTimes(data.startTimes);
+            if (data.homeBattery) setHomeBattery(data.homeBattery);
+            setShareMsg("✓ Trip imported!");
+            setTimeout(() => setShareMsg(null), 3000);
+          } catch { alert("Invalid trip file"); }
+        };
+        reader.readAsText(file);
+        e.target.value = "";
+      };
+
       const onAddStop = (dayNum, index) => {
         const newStop = {
           id: `custom-${Date.now()}`, name: "New Stop", type: "attraction",
@@ -1272,6 +1346,25 @@
                     <div className="text-[11px] text-gray-500">{l}</div>
                   </div>
                 ))}
+              </div>
+              {/* Share / Export / Import */}
+              <div className="flex items-center gap-2 mt-4 flex-wrap">
+                <button onClick={onShareURL}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] hover:border-blue-500/40 text-[11px] text-gray-400 hover:text-blue-400 transition-all">
+                  🔗 Share Link
+                </button>
+                <button onClick={onExportJSON}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] hover:border-green-500/40 text-[11px] text-gray-400 hover:text-green-400 transition-all">
+                  📥 Export JSON
+                </button>
+                <button onClick={()=>fileInputRef.current?.click()}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] hover:border-purple-500/40 text-[11px] text-gray-400 hover:text-purple-400 transition-all">
+                  📤 Import JSON
+                </button>
+                <input ref={fileInputRef} type="file" accept=".json" onChange={onImportJSON} className="hidden" />
+                {shareMsg && (
+                  <span className="text-[11px] text-green-400 font-medium animate-pulse">{shareMsg}</span>
+                )}
               </div>
             </div>
           </header>
