@@ -1311,10 +1311,30 @@
           <header className="relative overflow-hidden border-b border-[#1a1a1a]">
             <div className="absolute inset-0 bg-gradient-to-br from-blue-900/20 via-teal-900/10 to-purple-900/20" />
             <div className="relative max-w-4xl mx-auto px-4 py-10">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-3xl">⚡</span>
-                <span className="text-[11px] font-bold uppercase tracking-widest text-gray-500">Tesla Trip Planner</span>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-3xl">⚡</span>
+                  <span className="text-[11px] font-bold uppercase tracking-widest text-gray-500">Tesla Trip Planner</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button onClick={onShareURL}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] hover:border-blue-500/40 text-[11px] text-gray-400 hover:text-blue-400 transition-all">
+                    🔗 Share
+                  </button>
+                  <button onClick={onExportJSON}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] hover:border-green-500/40 text-[11px] text-gray-400 hover:text-green-400 transition-all">
+                    📥 Export
+                  </button>
+                  <button onClick={()=>fileInputRef.current?.click()}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] hover:border-purple-500/40 text-[11px] text-gray-400 hover:text-purple-400 transition-all">
+                    📤 Import
+                  </button>
+                  <input ref={fileInputRef} type="file" accept=".json" onChange={onImportJSON} className="hidden" />
+                </div>
               </div>
+              {shareMsg && (
+                <div className="mb-2"><span className="text-[11px] text-green-400 font-medium animate-pulse">{shareMsg}</span></div>
+              )}
               {editMode ? (
                 <div className="mb-2 space-y-1">
                   <input value={heroTitle} onChange={e=>setHeroTitle(e.target.value)}
@@ -1346,25 +1366,6 @@
                     <div className="text-[11px] text-gray-500">{l}</div>
                   </div>
                 ))}
-              </div>
-              {/* Share / Export / Import */}
-              <div className="flex items-center gap-2 mt-4 flex-wrap">
-                <button onClick={onShareURL}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] hover:border-blue-500/40 text-[11px] text-gray-400 hover:text-blue-400 transition-all">
-                  🔗 Share Link
-                </button>
-                <button onClick={onExportJSON}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] hover:border-green-500/40 text-[11px] text-gray-400 hover:text-green-400 transition-all">
-                  📥 Export JSON
-                </button>
-                <button onClick={()=>fileInputRef.current?.click()}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] hover:border-purple-500/40 text-[11px] text-gray-400 hover:text-purple-400 transition-all">
-                  📤 Import JSON
-                </button>
-                <input ref={fileInputRef} type="file" accept=".json" onChange={onImportJSON} className="hidden" />
-                {shareMsg && (
-                  <span className="text-[11px] text-green-400 font-medium animate-pulse">{shareMsg}</span>
-                )}
               </div>
             </div>
           </header>
