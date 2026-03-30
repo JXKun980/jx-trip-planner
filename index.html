@@ -1187,23 +1187,9 @@
           <header className="relative overflow-hidden border-b border-[#1a1a1a]">
             <div className="absolute inset-0 bg-gradient-to-br from-blue-900/20 via-teal-900/10 to-purple-900/20" />
             <div className="relative max-w-4xl mx-auto px-4 py-10">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-3xl">⚡</span>
-                  <span className="text-[11px] font-bold uppercase tracking-widest text-gray-500">Tesla Trip Planner</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {editMode && (
-                    <button onClick={onResetTrip}
-                      className="px-5 py-2.5 rounded-xl text-sm font-bold bg-[#141414] border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-all">
-                      ↺ Reset
-                    </button>
-                  )}
-                  <button onClick={()=>setEditMode(!editMode)}
-                    className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all border ${editMode ? "bg-blue-500/20 border-blue-500/50 text-blue-400" : "bg-[#1a1a1a] border-[#2a2a2a] text-gray-300 hover:text-white hover:border-[#3a3a3a]"}`}>
-                    {editMode ? "✓ Done Editing" : "✏️ Edit Trip"}
-                  </button>
-                </div>
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-3xl">⚡</span>
+                <span className="text-[11px] font-bold uppercase tracking-widest text-gray-500">Tesla Trip Planner</span>
               </div>
               {editMode ? (
                 <div className="mb-2 space-y-1">
@@ -1331,13 +1317,20 @@
             <p className="text-[11px] text-gray-600">Tesla Great Ocean Road Trip Planner · Distances & times are estimates · Verify Supercharger availability via Tesla app</p>
           </footer>
 
-          {/* Floating edit button */}
-          <button onClick={()=>setEditMode(!editMode)}
-            className={`fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-2xl flex items-center justify-center text-xl transition-all z-30 ${
-              editMode ? "bg-blue-500 hover:bg-blue-400 text-white rotate-0" : "bg-[#1a1a1a] hover:bg-[#2a2a2a] text-gray-300 border border-[#2a2a2a]"
-            }`} title={editMode ? "Done editing" : "Edit trip"}>
-            {editMode ? "✓" : "✏️"}
-          </button>
+          {/* Floating buttons */}
+          <div className="fixed bottom-6 right-6 flex flex-col items-center gap-3 z-30">
+            {editMode && (
+              <button onClick={onResetTrip}
+                className="w-11 h-11 rounded-full shadow-xl flex items-center justify-center text-base bg-[#1a1a1a] hover:bg-red-500/20 text-gray-400 hover:text-red-400 border border-[#2a2a2a] hover:border-red-500/30 transition-all"
+                title="Reset to default">↺</button>
+            )}
+            <button onClick={()=>setEditMode(!editMode)}
+              className={`w-14 h-14 rounded-full shadow-2xl flex items-center justify-center text-xl transition-all ${
+                editMode ? "bg-blue-500 hover:bg-blue-400 text-white" : "bg-[#1a1a1a] hover:bg-[#2a2a2a] text-gray-300 border border-[#2a2a2a]"
+              }`} title={editMode ? "Done editing" : "Edit trip"}>
+              {editMode ? "✓" : "✏️"}
+            </button>
+          </div>
         </div>
       );
     }
