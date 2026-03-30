@@ -1027,6 +1027,7 @@
       const [startTimes, setStartTimes] = useState([{h:8,m:0},{h:7,m:0},{h:7,m:0},{h:6,m:0}]);
       const [homeBattery, setHomeBattery] = useState(100);
       const [editMode, setEditMode] = useState(false);
+      const editSnapshot = React.useRef(null);
       const [dragDayNum, setDragDayNum] = useState(null);
       const [hoverDayIdx, setHoverDayIdx] = useState(null);
       const [heroTitle, setHeroTitle] = useState(() => localStorage.getItem("heroTitle") || "Great Ocean Road");
@@ -1140,7 +1141,22 @@
         }));
       };
 
-      const onResetTrip = () => { localStorage.removeItem("tripDays"); localStorage.removeItem("heroTitle"); localStorage.removeItem("heroSubtitle"); localStorage.removeItem("heroSnippet"); setDays(initialDays); setHeroTitle("Great Ocean Road"); setHeroSubtitle("& Beyond Adventure"); setHeroSnippet("Melbourne → Geelong → Great Ocean Road → Warrnambool → Mount Gambier → Naracoorte → Pink Lake → Home"); };
+      const toggleEditMode = () => {
+        if (!editMode) {
+          // Entering edit mode — save snapshot
+          editSnapshot.current = { days: JSON.parse(JSON.stringify(days)), heroTitle, heroSubtitle, heroSnippet };
+        }
+        setEditMode(!editMode);
+      };
+
+      const onRevertChanges = () => {
+        if (editSnapshot.current) {
+          setDays(editSnapshot.current.days);
+          setHeroTitle(editSnapshot.current.heroTitle);
+          setHeroSubtitle(editSnapshot.current.heroSubtitle);
+          setHeroSnippet(editSnapshot.current.heroSnippet);
+        }
+      };
 
       const onEditDay = (dayNum, updates) => setDays(p => p.map(d => d.day === dayNum ? { ...d, ...updates } : d));
 
@@ -1320,16 +1336,25 @@
           {/* Floating buttons */}
           <div className="fixed bottom-6 right-6 flex flex-col items-center gap-3 z-30">
             {editMode && (
-              <button onClick={onResetTrip}
-                className="w-11 h-11 rounded-full shadow-xl flex items-center justify-center text-base bg-[#1a1a1a] hover:bg-red-500/20 text-gray-400 hover:text-red-400 border border-[#2a2a2a] hover:border-red-500/30 transition-all"
-                title="Reset to default">↺</button>
+              <div className="relative group">
+                <button onClick={onRevertChanges}
+                  className="w-11 h-11 rounded-full shadow-xl flex items-center justify-center text-base bg-red-500/20 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/30 hover:border-red-400/50 transition-all">↺</button>
+                <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] text-[10px] text-gray-300 whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg">
+                  Revert changes
+                </div>
+              </div>
             )}
-            <button onClick={()=>setEditMode(!editMode)}
-              className={`w-14 h-14 rounded-full shadow-2xl flex items-center justify-center text-xl transition-all ${
-                editMode ? "bg-blue-500 hover:bg-blue-400 text-white" : "bg-[#1a1a1a] hover:bg-[#2a2a2a] text-gray-300 border border-[#2a2a2a]"
-              }`} title={editMode ? "Done editing" : "Edit trip"}>
-              {editMode ? "✓" : "✏️"}
-            </button>
+            <div className="relative group">
+              <button onClick={toggleEditMode}
+                className={`w-14 h-14 rounded-full shadow-2xl flex items-center justify-center text-xl transition-all ${
+                  editMode ? "bg-blue-500 hover:bg-blue-400 text-white" : "bg-[#1a1a1a] hover:bg-[#2a2a2a] text-gray-300 border border-[#2a2a2a]"
+                }`}>
+                {editMode ? "✓" : "✏️"}
+              </button>
+              <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] text-[10px] text-gray-300 whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity shadow-lg">
+                {editMode ? "Done editing" : "Edit trip"}
+              </div>
+            </div>
           </div>
         </div>
       );
