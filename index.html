@@ -969,25 +969,25 @@
           )}
           {open && <div className="ml-2">
             {day.stops.length > 0 && (
-              <div className="flex justify-center pb-4 pt-1">
-                <div className="flex items-center gap-2 bg-[#141414] border border-[#2a2a2a] rounded-xl px-4 py-2 shadow-lg">
-                  <span className="text-[10px] text-gray-500 uppercase tracking-wider font-medium">🕐 Depart</span>
-                  <div className="flex items-center gap-0.5 bg-[#0a0a0a] rounded-lg border border-[#2a2a2a] overflow-hidden">
+              <div className="flex justify-center pb-2">
+                <div className="flex items-center gap-1.5 bg-[#141414] border border-[#2a2a2a] rounded-lg px-3 py-1">
+                  <span className="text-[9px] text-gray-500 uppercase tracking-wider font-medium">🕐 Depart</span>
+                  <div className="flex items-center bg-[#0a0a0a] rounded border border-[#2a2a2a] overflow-hidden">
                     <select value={startH} onChange={e=>onStartTime(null, +e.target.value, null)}
                       onClick={e=>e.stopPropagation()}
-                      className="bg-transparent px-2 py-1.5 text-lg font-bold text-center appearance-none focus:outline-none cursor-pointer"
-                      style={{color:day.color, width:"52px"}}>
+                      className="bg-transparent px-1 py-0.5 text-sm font-bold text-center appearance-none focus:outline-none cursor-pointer"
+                      style={{color:day.color, width:"40px"}}>
                       {Array.from({length:19},(_,i)=>i+5).map(h=><option key={h} value={h}>{String(h).padStart(2,"0")}</option>)}
                     </select>
-                    <span className="text-lg font-bold" style={{color:day.color}}>:</span>
+                    <span className="text-sm font-bold" style={{color:day.color}}>:</span>
                     <select value={startM} onChange={e=>onStartTime(null, null, +e.target.value)}
                       onClick={e=>e.stopPropagation()}
-                      className="bg-transparent px-2 py-1.5 text-lg font-bold text-center appearance-none focus:outline-none cursor-pointer"
-                      style={{color:day.color, width:"52px"}}>
+                      className="bg-transparent px-1 py-0.5 text-sm font-bold text-center appearance-none focus:outline-none cursor-pointer"
+                      style={{color:day.color, width:"40px"}}>
                       {[0,5,10,15,20,25,30,35,40,45,50,55].map(m=><option key={m} value={m}>{String(m).padStart(2,"0")}</option>)}
                     </select>
                   </div>
-                  <span className="text-[10px] text-gray-600">{startH >= 12 ? "PM" : "AM"}</span>
+                  <span className="text-[9px] text-gray-600">{startH >= 12 ? "PM" : "AM"}</span>
                 </div>
               </div>
             )}
