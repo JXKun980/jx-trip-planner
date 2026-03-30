@@ -916,10 +916,6 @@
                             style={{background:c}} />
                         ))}
                       </div>
-                      <select value={startH} onChange={e=>onStartH(+e.target.value)}
-                        className="bg-black/40 border border-white/10 rounded px-2 py-0.5 text-[11px] text-white ml-auto">
-                        {Array.from({length:13},(_,i)=>i+5).map(h=><option key={h} value={h}>{timeOfDay(h,0)}</option>)}
-                      </select>
                     </div>
                     <input value={day.date} onChange={e=>onEditDay(day.day,{date:e.target.value})}
                       className="w-full bg-black/30 border border-white/10 rounded px-2 py-1 text-[11px] text-gray-300" placeholder="Date" />
@@ -933,17 +929,12 @@
                     <div className="flex items-center gap-3 mb-2">
                       <span className="text-[11px] font-bold px-3 py-1 rounded-full" style={{background:day.color,color:"#000"}}>DAY {day.day}</span>
                       <span className="text-[11px] text-gray-400">{day.date}</span>
-                      <select value={startH} onClick={e=>e.stopPropagation()} onChange={e=>{e.stopPropagation();onStartH(+e.target.value);}}
-                        className="bg-black/40 border border-white/10 rounded px-2 py-0.5 text-[11px] text-white ml-2">
-                        {Array.from({length:13},(_,i)=>i+5).map(h=><option key={h} value={h}>{timeOfDay(h,0)}</option>)}
-                      </select>
                     </div>
                     <h2 className="text-lg font-bold text-white mb-0.5">{day.title}</h2>
                     <p className="text-sm text-gray-400">{day.subtitle}</p>
                   </>
                 )}
               </div>
-              <div className="text-xl mt-1 ml-3 shrink-0">{open?"▾":"▸"}</div>
             </div>
             <div className="flex gap-3 mt-3 flex-wrap">
               {[["Distance",`${st.dist} km`,"white"],["Drive",fmt(st.drv),"white"],["Activities",fmt(st.stay),"#60a5fa"],["Charging",fmt(st.chrg),"#4ade80"],["Schedule",`${timeOfDay(startH,0)} → ${endT}`,"white"]].map(([l,v,c])=>(
@@ -952,6 +943,16 @@
                   <div className="text-sm font-bold" style={{color:c}}>{v}</div>
                 </div>
               ))}
+            </div>
+            {/* Expand/collapse strip */}
+            <div className={`-mx-5 -mb-5 mt-4 rounded-b-2xl py-1.5 flex items-center justify-center gap-2 transition-all ${
+              open ? "bg-white/5" : "bg-black/20 hover:bg-black/30"
+            }`} style={{borderTop:`1px solid ${day.color}33`}}>
+              <span className={`text-[10px] transition-transform inline-block ${open ? "rotate-180" : ""}`} style={{color:day.color}}>▼</span>
+              <span className="text-[10px] font-medium" style={{color: open ? day.color : "#999"}}>
+                {open ? "Hide stops" : `Show ${day.stops.length} stop${day.stops.length !== 1 ? "s" : ""}`}
+              </span>
+              <span className={`text-[10px] transition-transform inline-block ${open ? "rotate-180" : ""}`} style={{color:day.color}}>▼</span>
             </div>
           </div>
           {/* Day route map — key forces re-render when stops change */}
@@ -967,6 +968,22 @@
             </div>
           )}
           {open && <div className="ml-2">
+            {day.stops.length > 0 && (
+              <div className="flex gap-0 pb-3">
+                <div className="w-20 shrink-0 flex justify-center">
+                  <div className="flex flex-col items-center">
+                    <div className="text-[9px] text-gray-500 uppercase tracking-wider">Depart</div>
+                    <select value={startH} onChange={e=>{e.stopPropagation();onStartH(+e.target.value);}}
+                      onClick={e=>e.stopPropagation()}
+                      className="bg-[#141414] border border-[#2a2a2a] rounded px-1.5 py-0.5 text-[11px] text-white font-bold text-center mt-0.5 focus:outline-none focus:border-blue-500/50"
+                      style={{color:day.color}}>
+                      {Array.from({length:13},(_,i)=>i+5).map(h=><option key={h} value={h}>{timeOfDay(h,0)}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="flex-1" />
+              </div>
+            )}
             {editMode && day.stops.length === 0 && <AddStopButton onClick={()=>onAddStop(day.day, 0)} />}
             {day.stops.map((s,i)=>(
               <React.Fragment key={s.id}>
