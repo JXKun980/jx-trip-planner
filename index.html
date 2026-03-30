@@ -1012,6 +1012,38 @@
       React.useEffect(() => { localStorage.setItem("heroSubtitle", heroSubtitle); }, [heroSubtitle]);
       React.useEffect(() => { localStorage.setItem("heroSnippet", heroSnippet); }, [heroSnippet]);
 
+      // Auto-scroll when dragging near viewport edges
+      React.useEffect(() => {
+        let scrollRAF = null;
+        const EDGE = 80; // pixels from edge to trigger scroll
+        const SPEED = 12; // scroll speed
+
+        const handleDragOver = (e) => {
+          const y = e.clientY;
+          const h = window.innerHeight;
+          if (scrollRAF) cancelAnimationFrame(scrollRAF);
+          if (y < EDGE) {
+            const intensity = 1 - y / EDGE;
+            (function scroll() { window.scrollBy(0, -SPEED * intensity); scrollRAF = requestAnimationFrame(scroll); })();
+          } else if (y > h - EDGE) {
+            const intensity = 1 - (h - y) / EDGE;
+            (function scroll() { window.scrollBy(0, SPEED * intensity); scrollRAF = requestAnimationFrame(scroll); })();
+          }
+        };
+
+        const stopScroll = () => { if (scrollRAF) { cancelAnimationFrame(scrollRAF); scrollRAF = null; } };
+
+        window.addEventListener("dragover", handleDragOver);
+        window.addEventListener("dragend", stopScroll);
+        window.addEventListener("drop", stopScroll);
+        return () => {
+          window.removeEventListener("dragover", handleDragOver);
+          window.removeEventListener("dragend", stopScroll);
+          window.removeEventListener("drop", stopScroll);
+          stopScroll();
+        };
+      }, []);
+
       // Persist days to localStorage
       React.useEffect(() => { localStorage.setItem("tripDays", JSON.stringify(days)); }, [days]);
 
