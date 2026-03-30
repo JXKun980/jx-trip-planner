@@ -620,7 +620,7 @@
       );
     }
 
-    function StopCard({stop, battArr, battDep, arrTime, onChange, color, homeBattery, onHomeBatteryChange, editMode, onDelete, onEditField, prevStop, dragHandle}) {
+    function StopCard({stop, battArr, battDep, arrTime, onChange, color, homeBattery, onHomeBatteryChange, editMode, onDelete, onEditField, prevStop, dragHandle, isLast}) {
       const isCh=stop.type==="charge", isSl=stop.type==="sleep", isSt=stop.type==="start";
       const adj = !isSt && !isSl;
       const dotBg = isCh?"#22c55e":isSl?"#6366f1":isSt?color:"#374151";
@@ -646,10 +646,12 @@
                 <button onClick={()=>onChange(stop.id,Math.max(stop.min,stop.stay-5))}
                   className="w-5 h-5 rounded-full bg-[#2a2a2a] hover:bg-[#3a3a3a] text-[10px] font-bold text-gray-300 flex items-center justify-center shrink-0 my-0.5 transition-colors">−</button>
                 <div className="w-[2px] flex-1" style={{background:`${color}22`}} />
+                {isLast && <div className="text-sm shrink-0 mt-0.5">🌙</div>}
               </div>
             ) : (
               <div className="flex flex-col items-center flex-1 py-1">
                 <div className="w-[2px] flex-1" style={{background:`${color}22`}} />
+                {isLast && <div className="text-sm shrink-0 mt-0.5">🌙</div>}
               </div>
             )}
           </div>
@@ -877,6 +879,11 @@
         <div className="mb-7">
           <div className={`w-full ${day.gradient} rounded-2xl p-5 mb-3 text-left border border-[#2a2a2a] card-glow relative cursor-pointer`} onClick={()=>setOpen(!open)}>
             {editMode && (
+              <button onClick={(e) => { e.stopPropagation(); onDeleteDay(day.day); }}
+                className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-red-500 hover:bg-red-400 text-white text-[10px] font-bold flex items-center justify-center z-20 shadow transition-colors"
+                title="Delete day">✕</button>
+            )}
+            {editMode && (
               <div className="flex items-center justify-center py-1.5 -mx-5 -mt-5 mb-3 cursor-grab active:cursor-grabbing rounded-t-2xl bg-black/20 hover:bg-black/30 transition-colors"
                 draggable="true"
                 onClick={e => e.stopPropagation()}
@@ -893,11 +900,6 @@
                   <div className="w-6 h-[2px] bg-gray-400 rounded" />
                 </div>
               </div>
-            )}
-            {editMode && (
-              <button onClick={(e) => { e.stopPropagation(); onDeleteDay(day.day); }}
-                className="absolute top-2 right-2 w-7 h-7 rounded-full bg-red-500/80 hover:bg-red-400 text-white text-xs font-bold flex items-center justify-center z-10 shadow transition-colors"
-                title="Delete day">✕</button>
             )}
             <div className="flex items-start justify-between">
               <div className="flex-1">
@@ -993,7 +995,7 @@
                 {dragId && <DropZone idx={i} />}
                 <div className={dragId === s.id ? "opacity-30" : ""}>
                   <StopCard stop={s} battArr={levels[i].arr} battDep={levels[i].dep} arrTime={levels[i].t} onChange={onChange} color={day.color} homeBattery={homeBattery} onHomeBatteryChange={onHomeBatteryChange} editMode={editMode} onDelete={onDelete} onEditField={onEditField} prevStop={i > 0 ? day.stops[i-1] : null}
-                    dragHandle={editMode ? <DragHandle stopId={s.id} /> : null} />
+                    dragHandle={editMode ? <DragHandle stopId={s.id} /> : null} isLast={i === day.stops.length - 1} />
                 </div>
                 {!dragId && editMode && <AddStopButton onClick={()=>onAddStop(day.day, i + 1)} />}
               </React.Fragment>
