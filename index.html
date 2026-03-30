@@ -805,7 +805,7 @@
 
     const DAY_COLORS = ["#3b82f6","#14b8a6","#a855f7","#f59e0b","#ef4444","#ec4899","#8b5cf6","#06b6d4"];
 
-    function DaySection({day, onChange, startH, onStartH, homeBattery, onHomeBatteryChange, editMode, onDelete, onEditField, onAddStop, onEditDay, onDeleteDay, onReorderDay}) {
+    function DaySection({day, onChange, startH, onStartH, homeBattery, onHomeBatteryChange, editMode, onDelete, onEditField, onAddStop, onEditDay, onDeleteDay, onDayDragStart, onDayDragEnd}) {
       const [open, setOpen] = useState(true);
       const st = dayStats(day.stops);
       const levels = useMemo(() => {
@@ -883,7 +883,12 @@
             {editMode && (
               <div className="flex items-center justify-center py-1.5 -mx-5 -mt-5 mb-3 cursor-grab active:cursor-grabbing rounded-t-2xl bg-black/20 hover:bg-black/30 transition-colors"
                 draggable="true"
-                onDragStart={e => { e.dataTransfer.setData("daynum", String(day.day)); e.dataTransfer.effectAllowed = "move"; }}
+                onDragStart={e => {
+                  e.dataTransfer.setData("daynum", String(day.day));
+                  e.dataTransfer.effectAllowed = "move";
+                  if (onDayDragStart) onDayDragStart(day.day);
+                }}
+                onDragEnd={() => { if (onDayDragEnd) onDayDragEnd(); }}
               >
                 <div className="flex flex-col gap-[3px] opacity-40">
                   <div className="w-6 h-[2px] bg-gray-400 rounded" />
@@ -997,6 +1002,8 @@
       const [startHours, setStartHours] = useState([8,7,7,6]);
       const [homeBattery, setHomeBattery] = useState(100);
       const [editMode, setEditMode] = useState(false);
+      const [dragDayNum, setDragDayNum] = useState(null);
+      const [hoverDayIdx, setHoverDayIdx] = useState(null);
       const [heroTitle, setHeroTitle] = useState(() => localStorage.getItem("heroTitle") || "Great Ocean Road");
       const [heroSubtitle, setHeroSubtitle] = useState(() => localStorage.getItem("heroSubtitle") || "& Beyond Adventure");
       const [heroSnippet, setHeroSnippet] = useState(() => localStorage.getItem("heroSnippet") || "Melbourne → Geelong → Great Ocean Road → Warrnambool → Mount Gambier → Naracoorte → Pink Lake → Home");
@@ -1147,14 +1154,39 @@
           {/* Days */}
           <div className="max-w-4xl mx-auto px-4 py-4">
             {daysWithBattery.map((d,i)=>(
-              <div key={d.day}
-                onDragOver={e => { if (e.dataTransfer.types.includes("daynum")) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}}
-                onDrop={e => { const fromDay = +e.dataTransfer.getData("dayNum"); if (fromDay) onReorderDay(fromDay, d.day); }}
-              >
-                <DaySection day={d} onChange={onChange} startH={startHours[i]||8} onStartH={h=>onStartH(i,h)} homeBattery={homeBattery} onHomeBatteryChange={setHomeBattery} editMode={editMode} onDelete={onDelete} onEditField={onEditField} onAddStop={onAddStop} onEditDay={onEditDay} onDeleteDay={onDeleteDay} onReorderDay={onReorderDay} />
-              </div>
+              <React.Fragment key={d.day}>
+                {dragDayNum && (
+                  <div className="mb-3"
+                    onDragOver={e => { e.preventDefault(); setHoverDayIdx(i); }}
+                    onDragLeave={()=>setHoverDayIdx(null)}
+                    onDrop={e => { e.preventDefault(); const from = +e.dataTransfer.getData("daynum"); if (from) { onReorderDay(from, d.day); setDragDayNum(null); setHoverDayIdx(null); }}}>
+                    <div className={`w-full py-3 rounded-xl border-2 border-dashed transition-all flex items-center justify-center text-[11px] font-medium ${
+                      hoverDayIdx === i ? "border-blue-500 bg-blue-500/10 text-blue-400" : "border-[#2a2a2a] text-gray-600"
+                    }`}>
+                      {hoverDayIdx === i && dragDayNum ? `Move Day ${dragDayNum} here` : "Drop day here"}
+                    </div>
+                  </div>
+                )}
+                <div className={dragDayNum === d.day ? "opacity-30" : ""}>
+                  <DaySection day={d} onChange={onChange} startH={startHours[i]||8} onStartH={h=>onStartH(i,h)} homeBattery={homeBattery} onHomeBatteryChange={setHomeBattery} editMode={editMode} onDelete={onDelete} onEditField={onEditField} onAddStop={onAddStop} onEditDay={onEditDay} onDeleteDay={onDeleteDay}
+                    onDayDragStart={num => { requestAnimationFrame(() => setDragDayNum(num)); }}
+                    onDayDragEnd={() => { setDragDayNum(null); setHoverDayIdx(null); }} />
+                </div>
+              </React.Fragment>
             ))}
-            {editMode && (
+            {dragDayNum && (
+              <div className="mb-3"
+                onDragOver={e => { e.preventDefault(); setHoverDayIdx(daysWithBattery.length); }}
+                onDragLeave={()=>setHoverDayIdx(null)}
+                onDrop={e => { e.preventDefault(); const from = +e.dataTransfer.getData("daynum"); if (from) { onReorderDay(from, daysWithBattery[daysWithBattery.length-1].day + 1); setDragDayNum(null); setHoverDayIdx(null); }}}>
+                <div className={`w-full py-3 rounded-xl border-2 border-dashed transition-all flex items-center justify-center text-[11px] font-medium ${
+                  hoverDayIdx === daysWithBattery.length ? "border-blue-500 bg-blue-500/10 text-blue-400" : "border-[#2a2a2a] text-gray-600"
+                }`}>
+                  {hoverDayIdx === daysWithBattery.length ? `Move Day ${dragDayNum} here` : "Drop day here"}
+                </div>
+              </div>
+            )}
+            {!dragDayNum && editMode && (
               <button onClick={onAddDay}
                 className="w-full py-8 rounded-2xl border-2 border-dashed border-[#2a2a2a] hover:border-blue-500/40 bg-[#141414] hover:bg-blue-500/5 text-gray-500 hover:text-blue-400 flex flex-col items-center gap-2 transition-all mb-7">
                 <span className="text-3xl">+</span>
