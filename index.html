@@ -787,7 +787,7 @@
                           <div className="mt-2 flex items-center gap-2 bg-[#0d0d0d] rounded-lg px-3 py-2 border border-[#2a2a2a]">
                             <span className="text-[11px] text-gray-400">🔋 Starting battery:</span>
                             <input type="range" min={20} max={100} value={homeBattery} onChange={e=>onHomeBatteryChange(+e.target.value)}
-                              className="flex-1 h-1" style={{background:`linear-gradient(to right, #22c55e ${homeBattery}%, #2a2a2a ${homeBattery}%)`}} />
+                              className="flex-1 h-1" style={{background:`linear-gradient(to right, #22c55e ${((homeBattery-20)/80)*100}%, #2a2a2a ${((homeBattery-20)/80)*100}%)`}} />
                             <span className="text-sm font-bold text-green-400 w-10 text-right">{homeBattery}%</span>
                           </div>
                         )}
