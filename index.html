@@ -518,7 +518,7 @@
       } catch { return `${lat.toFixed(5)}, ${lng.toFixed(5)}`; }
     }
 
-    function AddressEditModal({ stop, prevStop, onSave, onCancel }) {
+    function AddressEditModal({ stop, prevStop, nextStop, onSave, onCancel }) {
       const [addr, setAddr] = useState(stop.address || "");
       const [lat, setLat] = useState(stop.lat || -37.8136);
       const [lng, setLng] = useState(stop.lng || 144.9631);
@@ -587,8 +587,14 @@
           const stats = await fetchDriveStats(prevStop.lat, prevStop.lng, lat, lng);
           Object.assign(updates, stats);
         }
+        // Also recalculate next stop's route from this new position
+        let nextUpdates = null;
+        if (nextStop && nextStop.lat && nextStop.lng) {
+          const nextStats = await fetchDriveStats(lat, lng, nextStop.lat, nextStop.lng);
+          nextUpdates = nextStats;
+        }
         setSaving(false);
-        onSave(updates);
+        onSave(updates, nextUpdates);
       };
 
       return (
@@ -645,7 +651,7 @@
               </button>
               <button onClick={handleDone} disabled={saving}
                 className="px-5 py-2 rounded-lg text-sm font-bold bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/50 text-blue-400 transition-colors disabled:opacity-70 flex items-center gap-2">
-                {saving ? (<><span className="inline-block w-3.5 h-3.5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" /> Calculating route...</>) : "✓ Done"}
+                {saving ? (<><span className="inline-block w-3.5 h-3.5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" /> Calculating routes...</>) : "✓ Done"}
               </button>
             </div>
           </div>
@@ -653,7 +659,7 @@
       );
     }
 
-    function StopCard({stop, battArr, battDep, arrTime, onChange, color, homeBattery, onHomeBatteryChange, editMode, onDelete, onEditField, prevStop, dragHandle, isLast, stopWeather}) {
+    function StopCard({stop, battArr, battDep, arrTime, onChange, color, homeBattery, onHomeBatteryChange, editMode, onDelete, onEditField, prevStop, nextStop, dragHandle, isLast, stopWeather}) {
       const isCh=stop.type==="charge", isSl=stop.type==="sleep", isSt=stop.type==="start";
       const adj = !isSt && !isSl;
       const dotBg = isCh?"#22c55e":isSl?"#6366f1":isSt?color:"#374151";
@@ -720,8 +726,8 @@
                         </button>
                         {showAddrModal && (
                           <AddressEditModal
-                            stop={stop} prevStop={prevStop}
-                            onSave={(updates) => { onEditField(stop.id, updates); setShowAddrModal(false); }}
+                            stop={stop} prevStop={prevStop} nextStop={nextStop}
+                            onSave={(updates, nextUpdates) => { onEditField(stop.id, updates); if (nextUpdates && nextStop) onEditField(nextStop.id, nextUpdates); setShowAddrModal(false); }}
                             onCancel={()=>setShowAddrModal(false)}
                           />
                         )}
@@ -764,7 +770,7 @@
                           {stop._routeSource && (
                             <div className={`flex items-center gap-1.5 text-[9px] px-2 py-1.5 ${stop._routeSource === "osrm" ? "bg-blue-500/5 border-t border-blue-500/15 text-blue-400" : "bg-yellow-500/5 border-t border-yellow-500/15 text-yellow-500"}`}>
                               {stop._routeSource === "osrm" ? "📡" : "⚠️"}
-                              <span>{stop._routeSource === "osrm" ? "Auto-calculated via OSRM road routing" : "Estimated — OSRM unavailable"}</span>
+                              <span>{stop._routeSource === "osrm" ? "Auto-calculated via OSRM road routing" : "Estimated — OSRM unavailable"}{nextStop?._routeSource ? " · Next stop also updated" : ""}</span>
                               <button onClick={()=>onEditField(stop.id,{_routeSource:undefined})} className="ml-auto text-gray-500 hover:text-white">✕</button>
                             </div>
                           )}
@@ -1169,7 +1175,7 @@
               <React.Fragment key={s.id}>
                 {dragId && <DropZone idx={i} />}
                 <div className={dragId === s.id ? "opacity-30" : ""}>
-                  <StopCard stop={s} battArr={levels[i].arr} battDep={levels[i].dep} arrTime={levels[i].t} onChange={onChange} color={day.color} homeBattery={homeBattery} onHomeBatteryChange={onHomeBatteryChange} editMode={editMode} onDelete={onDelete} onEditField={onEditField} prevStop={i > 0 ? day.stops[i-1] : null}
+                  <StopCard stop={s} battArr={levels[i].arr} battDep={levels[i].dep} arrTime={levels[i].t} onChange={onChange} color={day.color} homeBattery={homeBattery} onHomeBatteryChange={onHomeBatteryChange} editMode={editMode} onDelete={onDelete} onEditField={onEditField} prevStop={i > 0 ? day.stops[i-1] : null} nextStop={i < day.stops.length - 1 ? day.stops[i+1] : null}
                     dragHandle={editMode ? <DragHandle stopId={s.id} /> : null} isLast={i === day.stops.length - 1}
                     stopWeather={weatherData?.stops?.find(w => w.stopId === s.id)} />
                 </div>
