@@ -637,14 +637,14 @@
             {adj ? (
               <div className="flex flex-col items-center flex-1 py-1">
                 <div className="w-[2px] flex-1" style={{background:`${color}44`}} />
-                <button onClick={()=>onChange(stop.id,Math.min(stop.max,stop.stay+5))}
-                  className="w-5 h-5 rounded-full bg-[#2a2a2a] hover:bg-[#3a3a3a] text-[10px] font-bold text-gray-300 flex items-center justify-center shrink-0 my-0.5 transition-colors">+</button>
+                {editMode && <button onClick={()=>onChange(stop.id,Math.min(stop.max,stop.stay+5))}
+                  className="w-5 h-5 rounded-full bg-[#2a2a2a] hover:bg-[#3a3a3a] text-[10px] font-bold text-gray-300 flex items-center justify-center shrink-0 my-0.5 transition-colors">+</button>}
                 <div className="text-center my-0.5 px-1 py-0.5 rounded bg-[#1a1a1a] border border-[#2a2a2a]">
                   <div className="text-[10px] font-bold text-white leading-tight">{fmt(stop.stay)}</div>
                   <div className="text-[8px] text-gray-500">stay</div>
                 </div>
-                <button onClick={()=>onChange(stop.id,Math.max(stop.min,stop.stay-5))}
-                  className="w-5 h-5 rounded-full bg-[#2a2a2a] hover:bg-[#3a3a3a] text-[10px] font-bold text-gray-300 flex items-center justify-center shrink-0 my-0.5 transition-colors">−</button>
+                {editMode && <button onClick={()=>onChange(stop.id,Math.max(stop.min,stop.stay-5))}
+                  className="w-5 h-5 rounded-full bg-[#2a2a2a] hover:bg-[#3a3a3a] text-[10px] font-bold text-gray-300 flex items-center justify-center shrink-0 my-0.5 transition-colors">−</button>}
                 <div className="w-[2px] flex-1" style={{background:`${color}22`}} />
                 {isLast && <div className="w-6 h-6 rounded-full bg-[#1e1b4b] border-2 border-[#4338ca] flex items-center justify-center text-[10px] shrink-0 mt-1">🌙</div>}
               </div>
@@ -747,7 +747,7 @@
                           <StopWeatherTag weather={stopWeather} />
                         </div>
                         <p className="text-[11px] text-gray-400 leading-relaxed">{stop.desc}</p>
-                        {isSt && homeBattery !== undefined && onHomeBatteryChange && stop.id === "d1-start" && (
+                        {isSt && homeBattery !== undefined && stop.id === "d1-start" && editMode && onHomeBatteryChange && (
                           <div className="mt-2 flex items-center gap-2 bg-[#0d0d0d] rounded-lg px-3 py-2 border border-[#2a2a2a]">
                             <span className="text-[11px] text-gray-400">🔋 Starting battery:</span>
                             <input type="range" min={20} max={100} value={homeBattery} onChange={e=>onHomeBatteryChange(+e.target.value)}
