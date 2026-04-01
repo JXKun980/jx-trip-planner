@@ -1049,8 +1049,10 @@
                         ))}
                       </div>
                     </div>
-                    <input value={day.date} onChange={e=>onEditDay(day.day,{date:e.target.value})}
-                      className="w-full bg-black/30 border border-white/10 rounded px-2 py-1 text-[11px] text-gray-300" placeholder="Date" />
+                    <input type="date" value={parseDate(day.date) || ""} onChange={e=>{
+                      const d = new Date(e.target.value + "T00:00:00");
+                      if (!isNaN(d)) onEditDay(day.day, {date: d.toLocaleDateString("en-AU", {weekday:"long", day:"numeric", month:"long", year:"numeric"})});
+                    }} className="bg-black/30 border border-white/10 rounded px-2 py-1 text-[11px] text-gray-300" />
                     <input value={day.title} onChange={e=>onEditDay(day.day,{title:e.target.value})}
                       className="w-full bg-black/30 border border-white/10 rounded px-2 py-1.5 text-base font-bold text-white" placeholder="Day title" />
                     <input value={day.subtitle} onChange={e=>onEditDay(day.day,{subtitle:e.target.value})}
@@ -1483,6 +1485,11 @@
                   <span className="gradient-text">{heroTitle}</span><br/>
                   <span className="text-white">{heroSubtitle}</span>
                 </h1>
+              )}
+              {days.length > 0 && (
+                <p className="text-sm text-gray-500 mb-2">
+                  📅 {days[0].date}{days.length > 1 ? ` — ${days[days.length - 1].date}` : ""}
+                </p>
               )}
               {editMode ? (
                 <input value={heroSnippet} onChange={e=>setHeroSnippet(e.target.value)}
