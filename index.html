@@ -727,17 +727,16 @@
                         )}
                         {/* Name + type row */}
                         <div className="flex gap-1.5">
-                          <select value={stop.type} onChange={e => {
+                          <select value={stop.type === "start" || stop.type === "sleep" ? "attraction" : stop.type} onChange={e => {
                             const newType = e.target.value;
                             const updates = { type: newType };
                             if (newType === "charge" && !stop.charge) { updates.charge = makeChargeDefaults(); updates.emoji = "⚡"; }
-                            else if (newType !== "charge") { updates.charge = undefined; updates.emoji = newType==="sleep"?"🌙":newType==="start"?"🌅":"📍"; }
+                            else if (newType !== "charge") { updates.charge = undefined; updates.emoji = "📍"; }
                             onEditField(stop.id, updates);
                           }} className="bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1.5 py-1 text-[10px] text-white shrink-0">
                             <option value="attraction">📍 Attraction</option>
                             <option value="charge">⚡ Charger</option>
-                            <option value="sleep">🌙 Sleep</option>
-                            <option value="start">🌅 Start</option>
+                            <option value="food">🍽️ Food</option>
                           </select>
                           <input value={stop.emoji} onChange={e=>onEditField(stop.id,{emoji:e.target.value})}
                             className="w-8 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1 py-1 text-center text-sm shrink-0" />
