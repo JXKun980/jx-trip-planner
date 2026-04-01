@@ -1010,15 +1010,30 @@
       const [hoverIdx, setHoverIdx] = useState(null);
       const draggedStop = dragId ? day.stops.find(s => s.id === dragId) : null;
 
-      const handleDrop = (dropIdx) => {
+      const handleDrop = async (dropIdx) => {
         if (!dragId) return;
         const fromIdx = day.stops.findIndex(s => s.id === dragId);
         if (fromIdx === -1 || fromIdx === dropIdx) { setDragId(null); setHoverIdx(null); return; }
         const newStops = [...day.stops];
         const [moved] = newStops.splice(fromIdx, 1);
-        newStops.splice(dropIdx > fromIdx ? dropIdx - 1 : dropIdx, 0, moved);
+        const insertIdx = dropIdx > fromIdx ? dropIdx - 1 : dropIdx;
+        newStops.splice(insertIdx, 0, moved);
         onEditDay(day.day, { stops: newStops });
         setDragId(null); setHoverIdx(null);
+        // Recalculate routes for the moved stop and its new neighbors
+        const recalcAt = new Set([insertIdx, insertIdx + 1]);
+        for (const idx of recalcAt) {
+          if (idx <= 0 || idx >= newStops.length) continue;
+          const prev = newStops[idx - 1], curr = newStops[idx];
+          if (prev?.lat && prev?.lng && curr?.lat && curr?.lng) {
+            const stats = await fetchDriveStats(prev.lat, prev.lng, curr.lat, curr.lng);
+            onEditField(curr.id, stats);
+          }
+        }
+        // First stop should have zero route data
+        if (insertIdx === 0 && newStops[0]) {
+          onEditField(newStops[0].id, { dist: 0, drive: 0, batt: 0, _routeSource: undefined });
+        }
       };
 
       const DragHandle = ({stopId}) => (
@@ -1381,7 +1396,29 @@
       const onChange = (id, val) => setDays(p=>p.map(d=>({...d,stops:d.stops.map(s=>s.id===id?{...s,stay:val}:s)})));
       const onStartTime = (i, h, m) => setStartTimes(p=>{const n=[...p];n[i]={h:h??n[i]?.h??8,m:m??n[i]?.m??0};return n;});
 
-      const onDelete = (id) => setDays(p=>p.map(d=>({...d,stops:d.stops.filter(s=>s.id!==id)})));
+      const onDelete = async (id) => {
+        // Find affected stops before deleting
+        let nextStopToRecalc = null, newPrevStop = null;
+        for (const day of days) {
+          const idx = day.stops.findIndex(s => s.id === id);
+          if (idx === -1) continue;
+          newPrevStop = idx > 0 ? day.stops[idx - 1] : null;
+          nextStopToRecalc = idx < day.stops.length - 1 ? day.stops[idx + 1] : null;
+          break;
+        }
+        // Remove the stop
+        setDays(p => p.map(d => ({...d, stops: d.stops.filter(s => s.id !== id)})));
+        // Recalculate the next stop's route from its new previous stop
+        if (nextStopToRecalc && nextStopToRecalc.lat && nextStopToRecalc.lng) {
+          if (newPrevStop && newPrevStop.lat && newPrevStop.lng) {
+            const stats = await fetchDriveStats(newPrevStop.lat, newPrevStop.lng, nextStopToRecalc.lat, nextStopToRecalc.lng);
+            setDays(p => p.map(d => ({...d, stops: d.stops.map(s => s.id === nextStopToRecalc.id ? {...s, ...stats} : s)})));
+          } else {
+            // Next stop is now the first — zero out route data
+            setDays(p => p.map(d => ({...d, stops: d.stops.map(s => s.id === nextStopToRecalc.id ? {...s, dist:0, drive:0, batt:0, _routeSource:undefined} : s)})));
+          }
+        }
+      };
 
       const onEditField = (id, updates) => setDays(p=>p.map(d=>({...d,stops:d.stops.map(s=>s.id===id?{...s,...updates}:s)})));
 
