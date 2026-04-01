@@ -738,6 +738,14 @@
                         )}
                         <input value={stop.tip||""} onChange={e=>onEditField(stop.id,{tip:e.target.value})} placeholder="💡 Tip"
                           className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded px-2 py-0.5 text-[10px] text-yellow-500/80" />
+                        {isSt && homeBattery !== undefined && stop.id === "d1-start" && onHomeBatteryChange && (
+                          <div className="mt-2 flex items-center gap-2 bg-[#0d0d0d] rounded-lg px-3 py-2 border border-[#2a2a2a]">
+                            <span className="text-[11px] text-gray-400">🔋 Starting battery:</span>
+                            <input type="range" min={20} max={100} value={homeBattery} onChange={e=>onHomeBatteryChange(+e.target.value)}
+                              className="flex-1 h-1" style={{background:`linear-gradient(to right, #22c55e ${homeBattery}%, #2a2a2a ${homeBattery}%)`}} />
+                            <span className="text-sm font-bold text-green-400 w-10 text-right">{homeBattery}%</span>
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <>
@@ -747,12 +755,9 @@
                           <StopWeatherTag weather={stopWeather} />
                         </div>
                         <p className="text-[11px] text-gray-400 leading-relaxed">{stop.desc}</p>
-                        {isSt && homeBattery !== undefined && stop.id === "d1-start" && editMode && onHomeBatteryChange && (
-                          <div className="mt-2 flex items-center gap-2 bg-[#0d0d0d] rounded-lg px-3 py-2 border border-[#2a2a2a]">
-                            <span className="text-[11px] text-gray-400">🔋 Starting battery:</span>
-                            <input type="range" min={20} max={100} value={homeBattery} onChange={e=>onHomeBatteryChange(+e.target.value)}
-                              className="flex-1 h-1" style={{background:`linear-gradient(to right, #22c55e ${homeBattery}%, #2a2a2a ${homeBattery}%)`}} />
-                            <span className="text-sm font-bold text-green-400 w-10 text-right">{homeBattery}%</span>
+                        {isSt && homeBattery !== undefined && stop.id === "d1-start" && (
+                          <div className="mt-2 flex items-center gap-2 text-[11px] text-gray-400">
+                            🔋 Starting battery: <span className="font-bold text-green-400">{homeBattery}%</span>
                           </div>
                         )}
                       </>
