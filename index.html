@@ -401,13 +401,13 @@
           const kwhPer100 = consumptionAtSpeed(avgSpeed);
           const energyUsed = dist * kwhPer100 / 100; // kWh
           const batt = Math.round(energyUsed / BATTERY_KWH * 100); // % of 60kWh battery
-          return { dist, drive, batt };
+          return { dist, drive, batt, _routeSource: "osrm" };
         }
       } catch {}
       // Fallback to estimate if OSRM fails
       const straight = haversine(fromLat, fromLng, toLat, toLng);
       const roadKm = Math.round(straight * 1.35);
-      return { dist: roadKm, drive: Math.round(roadKm / 80 * 60), batt: Math.round(roadKm * 0.23) };
+      return { dist: roadKm, drive: Math.round(roadKm / 80 * 60), batt: Math.round(roadKm * 0.23), _routeSource: "estimate" };
     }
 
     // Geocode address via Nominatim, returns {lat, lng} or null
@@ -443,6 +443,7 @@
     function AddressAutocomplete({ value, onChange, onSelect, placeholder, className, prevStop, onEditField, stopId }) {
       const [suggestions, setSuggestions] = useState([]);
       const [showSugg, setShowSugg] = useState(false);
+      const [loading, setLoading] = useState(false);
       const [timer, setTimer] = useState(null);
       const ref = React.useRef(null);
 
@@ -458,6 +459,7 @@
 
       const pick = async (s) => {
         setShowSugg(false);
+        setLoading(true);
         const updates = {
           address: s.address,
           name: s.name || s.address.split(",")[0],
@@ -475,6 +477,7 @@
           const stats = await fetchDriveStats(prevStop.lat, prevStop.lng, s.lat, s.lng);
           Object.assign(updates, stats);
         }
+        setLoading(false);
         onSelect(updates);
       };
 
@@ -487,9 +490,10 @@
 
       return (
         <div className="relative" ref={ref}>
-          <input value={value} onChange={e=>handleInput(e.target.value)}
+          <input value={loading ? "⏳ Calculating route..." : value} onChange={e=>handleInput(e.target.value)}
             onFocus={()=>{ if (suggestions.length) setShowSugg(true); }}
-            placeholder={placeholder} className={className} />
+            disabled={loading}
+            placeholder={placeholder} className={`${className} ${loading ? "opacity-60" : ""}`} />
           {showSugg && (
             <div className="absolute z-30 top-full left-0 right-0 mt-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg shadow-xl max-h-48 overflow-y-auto">
               {suggestions.map((s, i) => (
@@ -570,7 +574,10 @@
         if (s.lat && s.lng) moveMap(s.lat, s.lng);
       };
 
+      const [saving, setSaving] = useState(false);
+
       const handleDone = async () => {
+        setSaving(true);
         const updates = { address: addr, name: name || addr.split(",")[0], lat, lng, mq: addr.replace(/\s+/g, "+") };
         if (isChargerName(addr) || isChargerName(name)) {
           updates.type = "charge"; updates.charge = makeChargeDefaults(); updates.emoji = "⚡";
@@ -580,6 +587,7 @@
           const stats = await fetchDriveStats(prevStop.lat, prevStop.lng, lat, lng);
           Object.assign(updates, stats);
         }
+        setSaving(false);
         onSave(updates);
       };
 
@@ -631,13 +639,13 @@
             </div>
             {/* Footer buttons */}
             <div className="px-5 py-3 flex justify-end gap-2 border-t border-[#2a2a2a]">
-              <button onClick={onCancel}
-                className="px-4 py-2 rounded-lg text-sm font-medium bg-[#2a2a2a] hover:bg-[#3a3a3a] text-gray-300 transition-colors">
+              <button onClick={onCancel} disabled={saving}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-[#2a2a2a] hover:bg-[#3a3a3a] text-gray-300 transition-colors disabled:opacity-50">
                 Cancel
               </button>
-              <button onClick={handleDone}
-                className="px-5 py-2 rounded-lg text-sm font-bold bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/50 text-blue-400 transition-colors">
-                ✓ Done
+              <button onClick={handleDone} disabled={saving}
+                className="px-5 py-2 rounded-lg text-sm font-bold bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/50 text-blue-400 transition-colors disabled:opacity-70 flex items-center gap-2">
+                {saving ? (<><span className="inline-block w-3.5 h-3.5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" /> Calculating route...</>) : "✓ Done"}
               </button>
             </div>
           </div>
@@ -746,13 +754,22 @@
                         </div>
                         <textarea value={stop.desc} onChange={e=>onEditField(stop.id,{desc:e.target.value})} rows={2} placeholder="Description"
                           className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded px-2 py-1 text-[11px] text-gray-400 resize-none" />
-                        <div className="flex gap-2 flex-wrap text-[10px]">
-                          <label className="flex items-center gap-1 text-gray-500">Dist(km) <input type="number" value={stop.dist} onChange={e=>onEditField(stop.id,{dist:+e.target.value})}
-                            className="w-14 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1 py-0.5 text-white" /></label>
-                          <label className="flex items-center gap-1 text-gray-500">Drive(min) <input type="number" value={stop.drive} onChange={e=>onEditField(stop.id,{drive:+e.target.value})}
-                            className="w-14 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1 py-0.5 text-white" /></label>
-                          <label className="flex items-center gap-1 text-gray-500">Batt% <input type="number" value={stop.batt} onChange={e=>onEditField(stop.id,{batt:+e.target.value})}
-                            className="w-12 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1 py-0.5 text-white" /></label>
+                        <div className={`rounded-lg overflow-hidden ${stop._routeSource ? (stop._routeSource === "osrm" ? "border border-blue-500/15" : "border border-yellow-500/15") : "border border-[#2a2a2a]"}`}>
+                          <div className="flex gap-2 flex-wrap text-[10px] p-2">
+                            <label className="flex items-center gap-1 text-gray-500">Dist(km) <input type="number" value={stop.dist} onChange={e=>onEditField(stop.id,{dist:+e.target.value, _routeSource:undefined})}
+                              className="w-14 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1 py-0.5 text-white" /></label>
+                            <label className="flex items-center gap-1 text-gray-500">Drive(min) <input type="number" value={stop.drive} onChange={e=>onEditField(stop.id,{drive:+e.target.value, _routeSource:undefined})}
+                              className="w-14 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1 py-0.5 text-white" /></label>
+                            <label className="flex items-center gap-1 text-gray-500">Batt% <input type="number" value={stop.batt} onChange={e=>onEditField(stop.id,{batt:+e.target.value, _routeSource:undefined})}
+                              className="w-12 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1 py-0.5 text-white" /></label>
+                          </div>
+                          {stop._routeSource && (
+                            <div className={`flex items-center gap-1.5 text-[9px] px-2 py-1.5 ${stop._routeSource === "osrm" ? "bg-blue-500/5 border-t border-blue-500/15 text-blue-400" : "bg-yellow-500/5 border-t border-yellow-500/15 text-yellow-500"}`}>
+                              {stop._routeSource === "osrm" ? "📡" : "⚠️"}
+                              <span>{stop._routeSource === "osrm" ? "Auto-calculated via OSRM road routing" : "Estimated — OSRM unavailable"}</span>
+                              <button onClick={()=>onEditField(stop.id,{_routeSource:undefined})} className="ml-auto text-gray-500 hover:text-white">✕</button>
+                            </div>
+                          )}
                         </div>
                         {stop.type === "charge" && stop.charge && (
                           <div className="flex gap-2 flex-wrap text-[10px] bg-green-500/5 rounded p-1.5 border border-green-500/10">
