@@ -377,6 +377,17 @@
       return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     }
 
+    // Speed-based battery consumption for Tesla Model 3 Base (LFP 60kWh)
+    // Returns kWh/100km based on average speed
+    function consumptionAtSpeed(avgKmh) {
+      if (avgKmh <= 40) return 12;   // city crawl
+      if (avgKmh <= 60) return 13;   // suburban
+      if (avgKmh <= 80) return 14.5; // outer suburban / country
+      if (avgKmh <= 100) return 16;  // highway
+      if (avgKmh <= 110) return 18;  // fast highway
+      return 20;                      // motorway 110+
+    }
+
     // Get real road distance + drive time via OSRM (free, no key)
     async function fetchDriveStats(fromLat, fromLng, toLat, toLng) {
       try {
@@ -386,14 +397,17 @@
           const route = data.routes[0];
           const dist = Math.round(route.distance / 1000); // meters to km
           const drive = Math.round(route.duration / 60); // seconds to minutes
-          const batt = Math.round(dist * 0.18); // ~18% per 100km
+          const avgSpeed = dist / (drive / 60); // km/h
+          const kwhPer100 = consumptionAtSpeed(avgSpeed);
+          const energyUsed = dist * kwhPer100 / 100; // kWh
+          const batt = Math.round(energyUsed / BATTERY_KWH * 100); // % of 60kWh battery
           return { dist, drive, batt };
         }
       } catch {}
       // Fallback to estimate if OSRM fails
       const straight = haversine(fromLat, fromLng, toLat, toLng);
       const roadKm = Math.round(straight * 1.35);
-      return { dist: roadKm, drive: Math.round(roadKm / 80 * 60), batt: Math.round(roadKm * 0.18) };
+      return { dist: roadKm, drive: Math.round(roadKm / 80 * 60), batt: Math.round(roadKm * 0.23) };
     }
 
     // Geocode address via Nominatim, returns {lat, lng} or null
