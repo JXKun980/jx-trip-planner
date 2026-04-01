@@ -1003,16 +1003,21 @@
       // Key for route map iframe to force re-render on stop changes
       const routeKey = useMemo(() => day.stops.map(s => s.mq || s.id).join("|"), [day.stops]);
 
-      // Weather data for the day and all stops
+      // Weather data for the day and all stops — re-fetch when locations change
       const [weatherData, setWeatherData] = useState(null);
       const [weatherLoading, setWeatherLoading] = useState(true);
+      const [weatherLoadingIds, setWeatherLoadingIds] = useState(new Set());
+      const stopsLocationKey = useMemo(() => day.stops.map(s => `${s.id}:${s.lat},${s.lng}`).join("|"), [day.stops]);
       const fetchWeather = async () => {
         setWeatherLoading(true);
+        const allIds = new Set(day.stops.map(s => s.id));
+        setWeatherLoadingIds(allIds);
         const w = await fetchDayWeather(day.stops, day.date);
         setWeatherData(w);
+        setWeatherLoadingIds(new Set());
         setWeatherLoading(false);
       };
-      React.useEffect(() => { if (day.stops.length > 0) fetchWeather(); }, []);
+      React.useEffect(() => { if (day.stops.length > 0) fetchWeather(); }, [stopsLocationKey]);
 
       // Drag state for stop reordering
       const [dragId, setDragId] = useState(null);
@@ -1206,7 +1211,7 @@
                   <StopCard stop={s} battArr={levels[i].arr} battDep={levels[i].dep} arrTime={levels[i].t} onChange={onChange} color={day.color} homeBattery={homeBattery} onHomeBatteryChange={onHomeBatteryChange} editMode={editMode} onDelete={onDelete} onEditField={onEditField} prevStop={i > 0 ? day.stops[i-1] : null} nextStop={i < day.stops.length - 1 ? day.stops[i+1] : null}
                     dragHandle={editMode ? <DragHandle stopId={s.id} /> : null} isLast={i === day.stops.length - 1}
                     stopWeather={weatherData?.stops?.find(w => w.stopId === s.id)}
-                    isRecalculating={recalcStopIds.has(s.id)} setRecalcStopIds={setRecalcStopIds} />
+                    isRecalculating={recalcStopIds.has(s.id) || weatherLoadingIds.has(s.id)} setRecalcStopIds={setRecalcStopIds} />
                 </div>
                 {!dragId && editMode && <AddStopButton onClick={()=>onAddStop(day.day, i + 1)} />}
               </React.Fragment>
