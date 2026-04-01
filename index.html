@@ -631,9 +631,12 @@
           {/* Left column: time + timeline + duration control */}
           <div className="flex flex-col items-center w-20 shrink-0 pt-1">
             <div className="text-center mb-1.5">
-              <div className="text-[9px] text-gray-500 uppercase tracking-wider">Arrive</div>
+              <div className="text-[9px] text-gray-500 uppercase tracking-wider">{!prevStop ? "Depart" : "Arrive"}</div>
               <div className="text-[11px] font-bold text-white">{arrTime}</div>
             </div>
+            {!prevStop && (
+              <div className="w-6 h-6 rounded-full bg-[#166534] border-2 border-[#22c55e] flex items-center justify-center text-[10px] shrink-0 mb-0.5">🚩</div>
+            )}
             {adj ? (
               <div className="flex flex-col items-center flex-1 py-1">
                 <div className="w-[2px] flex-1" style={{background:`${color}44`}} />
@@ -752,6 +755,7 @@
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-base">{stop.emoji}</span>
                           <h3 className="font-semibold text-white text-sm">{stop.name}</h3>
+                          {!prevStop && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30">START</span>}
                           <StopWeatherTag weather={stopWeather} />
                         </div>
                         <p className="text-[11px] text-gray-400 leading-relaxed">{stop.desc}</p>
