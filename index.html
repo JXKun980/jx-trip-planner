@@ -647,9 +647,10 @@
     }
 
     function StopCard({stop, battArr, battDep, arrTime, onChange, color, homeBattery, onHomeBatteryChange, editMode, onDelete, onEditField, prevStop, nextStop, dragHandle, isLast, stopWeather, isRecalculating, setRecalcStopIds}) {
-      const isCh=stop.type==="charge", isSl=stop.type==="sleep", isSt=stop.type==="start";
-      const adj = !isSt && !isSl;
-      const dotBg = isCh?"#22c55e":isSl?"#6366f1":isSt?color:"#374151";
+      const isCh=stop.type==="charge";
+      const isFirst = !prevStop;
+      const adj = !isFirst && !isLast;
+      const dotBg = isCh?"#22c55e":isLast?"#6366f1":isFirst?color:"#374151";
       const dotBorder = isCh?"#22c55e":color;
       const [showAddrModal, setShowAddrModal] = useState(false);
       return (
@@ -806,7 +807,7 @@
                           <StopWeatherTag weather={stopWeather} />
                         </div>
                         <p className="text-[11px] text-gray-400 leading-relaxed">{stop.desc}</p>
-                        {isSt && homeBattery !== undefined && stop.id === "d1-start" && onHomeBatteryChange && (
+                        {isFirst && homeBattery !== undefined && stop.id === "d1-start" && onHomeBatteryChange && (
                           <div className="mt-2 flex items-center gap-2 bg-[#0d0d0d] rounded-lg px-3 py-2 border border-[#2a2a2a]">
                             <span className="text-[11px] text-gray-400">🔋 Starting battery:</span>
                             <input type="range" min={20} max={100} value={homeBattery} onChange={e=>onHomeBatteryChange(+e.target.value)}
@@ -821,7 +822,7 @@
                     <>
                       <div className="px-3.5 py-1.5 bg-[#0d0d0d] flex items-center gap-3 flex-wrap text-[11px]">
                         {stop.dist>0 && <span className="text-gray-400">🚗 {stop.dist}km · {fmt(stop.drive)}</span>}
-                        {!isSt && <span className="text-gray-400">🔋 <BatteryGauge pct={battArr} /></span>}
+                        {!isFirst && <span className="text-gray-400">🔋 <BatteryGauge pct={battArr} /></span>}
                         {isCh && stop.charge && (
                           <span className="ml-auto text-green-400 text-[10px] font-medium px-2 py-0.5 rounded-full bg-green-400/10 border border-green-400/20">
                             {stop.charge.type} ({stop.charge.kw}kW) → {Math.round(battDep)}%
