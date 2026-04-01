@@ -887,51 +887,68 @@
       return null;
     }
 
-    async function fetchDayWeather(stops, dateStr) {
+    // stopsWithTimes: [{...stop, arriveHour, departHour}]
+    async function fetchDayWeather(stopsWithTimes, dateStr) {
       const targetDate = parseDate(dateStr);
-      const seen = new Set();
-      const results = []; // { stopId, high, low, uv, weatherCode, weatherLabel }
+      const seen = {};  // key -> hourly data cache
+      const results = [];
 
-      for (const s of stops) {
+      for (const s of stopsWithTimes) {
         if (!s.lat || !s.lng) { results.push({ stopId: s.id }); continue; }
         const key = `${Math.round(s.lat*2)/2},${Math.round(s.lng*2)/2}`;
-        if (seen.has(key)) {
-          // Copy from previous stop with same area
-          const prev = results.find(r => r._areaKey === key && r.weatherLabel);
-          results.push({ stopId: s.id, ...(prev || {}), _areaKey: key });
-          continue;
+        let hourlyData = seen[key];
+        if (!hourlyData) {
+          try {
+            const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${s.lat}&longitude=${s.lng}&hourly=temperature_2m,weathercode,uv_index&timezone=auto&forecast_days=14`);
+            const data = await res.json();
+            if (data.hourly) { hourlyData = data.hourly; seen[key] = hourlyData; }
+          } catch {}
         }
-        seen.add(key);
-        try {
-          const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${s.lat}&longitude=${s.lng}&daily=temperature_2m_max,temperature_2m_min,uv_index_max,weathercode&timezone=auto&forecast_days=14`);
-          const data = await res.json();
-          if (!data.daily) { results.push({ stopId: s.id, _areaKey: key }); continue; }
-          let idx = targetDate ? data.daily.time.indexOf(targetDate) : -1;
-          if (idx === -1) idx = 0;
-          const wc = data.daily.weathercode?.[idx] ?? 0;
-          results.push({
-            stopId: s.id, _areaKey: key,
-            high: Math.round(data.daily.temperature_2m_max[idx] ?? 0),
-            low: Math.round(data.daily.temperature_2m_min[idx] ?? 0),
-            uv: data.daily.uv_index_max?.[idx] != null ? Math.round(data.daily.uv_index_max[idx]) : null,
-            weatherCode: wc,
-            weatherLabel: wmoToWeather(wc),
-          });
-        } catch { results.push({ stopId: s.id, _areaKey: key }); }
+        if (!hourlyData) { results.push({ stopId: s.id }); continue; }
+
+        // Find hourly indices matching the stop's arrival-departure window on target date
+        const arrH = Math.max(0, Math.min(23, Math.floor(s.arriveHour ?? 8)));
+        const depH = Math.max(arrH, Math.min(23, Math.ceil(s.departHour ?? arrH + 1)));
+        const matchIndices = [];
+        for (let h = arrH; h <= depH; h++) {
+          const timeStr = `${targetDate || hourlyData.time[0]?.slice(0,10)}T${String(h).padStart(2,"0")}:00`;
+          const idx = hourlyData.time.indexOf(timeStr);
+          if (idx >= 0) matchIndices.push(idx);
+        }
+        // Fallback: if no match, use the arrival hour on day 0
+        if (matchIndices.length === 0) {
+          const fallbackIdx = Math.min(arrH, (hourlyData.time?.length || 1) - 1);
+          matchIndices.push(fallbackIdx);
+        }
+
+        const temps = matchIndices.map(i => hourlyData.temperature_2m[i]).filter(t => t != null);
+        const codes = matchIndices.map(i => hourlyData.weathercode[i]).filter(c => c != null);
+        const uvs = matchIndices.map(i => hourlyData.uv_index?.[i]).filter(u => u != null);
+        const worstCode = worstWeatherCode(codes);
+
+        results.push({
+          stopId: s.id,
+          high: temps.length > 0 ? Math.round(Math.max(...temps)) : null,
+          low: temps.length > 0 ? Math.round(Math.min(...temps)) : null,
+          uv: uvs.length > 0 ? Math.round(Math.max(...uvs)) : null,
+          weatherCode: worstCode,
+          weatherLabel: wmoToWeather(worstCode),
+        });
       }
 
       // Aggregate for the day
       const valid = results.filter(r => r.weatherLabel);
       if (valid.length === 0) return { stops: results, day: null };
-      const worstCode = worstWeatherCode(valid.map(r => r.weatherCode));
+      const allCodes = valid.map(r => r.weatherCode);
+      const dayWorst = worstWeatherCode(allCodes);
       return {
         stops: results,
         day: {
-          high: Math.max(...valid.map(r => r.high)),
-          low: Math.min(...valid.map(r => r.low)),
-          uv: Math.max(...valid.filter(r => r.uv !== null).map(r => r.uv)),
-          weatherCode: worstCode,
-          weatherLabel: wmoToWeather(worstCode),
+          high: Math.max(...valid.filter(r=>r.high!=null).map(r=>r.high)),
+          low: Math.min(...valid.filter(r=>r.low!=null).map(r=>r.low)),
+          uv: Math.max(...valid.filter(r=>r.uv!=null).map(r=>r.uv)),
+          weatherCode: dayWorst,
+          weatherLabel: wmoToWeather(dayWorst),
         }
       };
     }
@@ -1012,12 +1029,23 @@
         setWeatherLoading(true);
         const allIds = new Set(day.stops.map(s => s.id));
         setWeatherLoadingIds(allIds);
-        const w = await fetchDayWeather(day.stops, day.date);
+        // Build stops with arrival/departure hours
+        let elapsed = 0;
+        const stopsWithTimes = day.stops.map(s => {
+          elapsed += s.drive || 0;
+          const arriveHour = startH + (startM + elapsed) / 60;
+          const departHour = arriveHour + (s.stay || 0) / 60;
+          elapsed += s.stay || 0;
+          return { ...s, arriveHour, departHour };
+        });
+        const w = await fetchDayWeather(stopsWithTimes, day.date);
         setWeatherData(w);
         setWeatherLoadingIds(new Set());
         setWeatherLoading(false);
       };
-      React.useEffect(() => { if (day.stops.length > 0) fetchWeather(); }, [stopsLocationKey]);
+      // Re-fetch when locations or timing changes
+      const stopsTimingKey = useMemo(() => day.stops.map(s => `${s.drive}:${s.stay}`).join("|"), [day.stops]);
+      React.useEffect(() => { if (day.stops.length > 0) fetchWeather(); }, [stopsLocationKey, stopsTimingKey, startH, startM]);
 
       // Drag state for stop reordering
       const [dragId, setDragId] = useState(null);
