@@ -575,27 +575,13 @@
         if (s.lat && s.lng) moveMap(s.lat, s.lng);
       };
 
-      const [saving, setSaving] = useState(false);
-
-      const handleDone = async () => {
-        setSaving(true);
+      const handleDone = () => {
         const updates = { address: addr, name: name || addr.split(",")[0], lat, lng, mq: addr.replace(/\s+/g, "+") };
         if (isChargerName(addr) || isChargerName(name)) {
           updates.type = "charge"; updates.charge = makeChargeDefaults(); updates.emoji = "⚡";
           updates.poi = (name || addr).replace(/\s+/g, "+");
         }
-        if (prevStop && prevStop.lat) {
-          const stats = await fetchDriveStats(prevStop.lat, prevStop.lng, lat, lng);
-          Object.assign(updates, stats);
-        }
-        // Also recalculate next stop's route from this new position
-        let nextUpdates = null;
-        if (nextStop && nextStop.lat && nextStop.lng) {
-          const nextStats = await fetchDriveStats(lat, lng, nextStop.lat, nextStop.lng);
-          nextUpdates = nextStats;
-        }
-        setSaving(false);
-        onSave(updates, nextUpdates);
+        onSave(updates);
       };
 
       return (
@@ -646,13 +632,13 @@
             </div>
             {/* Footer buttons */}
             <div className="px-5 py-3 flex justify-end gap-2 border-t border-[#2a2a2a]">
-              <button onClick={onCancel} disabled={saving}
-                className="px-4 py-2 rounded-lg text-sm font-medium bg-[#2a2a2a] hover:bg-[#3a3a3a] text-gray-300 transition-colors disabled:opacity-50">
+              <button onClick={onCancel}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-[#2a2a2a] hover:bg-[#3a3a3a] text-gray-300 transition-colors">
                 Cancel
               </button>
-              <button onClick={handleDone} disabled={saving}
-                className="px-5 py-2 rounded-lg text-sm font-bold bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/50 text-blue-400 transition-colors disabled:opacity-70 flex items-center gap-2">
-                {saving ? (<><span className="inline-block w-3.5 h-3.5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" /> Calculating routes...</>) : "✓ Done"}
+              <button onClick={handleDone}
+                className="px-5 py-2 rounded-lg text-sm font-bold bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/50 text-blue-400 transition-colors">
+                ✓ Done
               </button>
             </div>
           </div>
@@ -660,7 +646,7 @@
       );
     }
 
-    function StopCard({stop, battArr, battDep, arrTime, onChange, color, homeBattery, onHomeBatteryChange, editMode, onDelete, onEditField, prevStop, nextStop, dragHandle, isLast, stopWeather, isRecalculating}) {
+    function StopCard({stop, battArr, battDep, arrTime, onChange, color, homeBattery, onHomeBatteryChange, editMode, onDelete, onEditField, prevStop, nextStop, dragHandle, isLast, stopWeather, isRecalculating, setRecalcStopIds}) {
       const isCh=stop.type==="charge", isSl=stop.type==="sleep", isSt=stop.type==="start";
       const adj = !isSt && !isSl;
       const dotBg = isCh?"#22c55e":isSl?"#6366f1":isSt?color:"#374151";
@@ -733,7 +719,24 @@
                         {showAddrModal && (
                           <AddressEditModal
                             stop={stop} prevStop={prevStop} nextStop={nextStop}
-                            onSave={(updates, nextUpdates) => { onEditField(stop.id, updates); if (nextUpdates && nextStop) onEditField(nextStop.id, nextUpdates); setShowAddrModal(false); }}
+                            onSave={async (updates) => {
+                              // Save basic data and close modal immediately
+                              onEditField(stop.id, updates);
+                              setShowAddrModal(false);
+                              // Calculate routes in background with loading indicators
+                              const affectedIds = new Set([stop.id]);
+                              if (nextStop) affectedIds.add(nextStop.id);
+                              setRecalcStopIds(affectedIds);
+                              if (prevStop?.lat && prevStop?.lng && updates.lat && updates.lng) {
+                                const stats = await fetchDriveStats(prevStop.lat, prevStop.lng, updates.lat, updates.lng);
+                                onEditField(stop.id, stats);
+                              }
+                              if (nextStop?.lat && nextStop?.lng && updates.lat && updates.lng) {
+                                const nextStats = await fetchDriveStats(updates.lat, updates.lng, nextStop.lat, nextStop.lng);
+                                onEditField(nextStop.id, nextStats);
+                              }
+                              setRecalcStopIds(new Set());
+                            }}
                             onCancel={()=>setShowAddrModal(false)}
                           />
                         )}
@@ -1203,7 +1206,7 @@
                   <StopCard stop={s} battArr={levels[i].arr} battDep={levels[i].dep} arrTime={levels[i].t} onChange={onChange} color={day.color} homeBattery={homeBattery} onHomeBatteryChange={onHomeBatteryChange} editMode={editMode} onDelete={onDelete} onEditField={onEditField} prevStop={i > 0 ? day.stops[i-1] : null} nextStop={i < day.stops.length - 1 ? day.stops[i+1] : null}
                     dragHandle={editMode ? <DragHandle stopId={s.id} /> : null} isLast={i === day.stops.length - 1}
                     stopWeather={weatherData?.stops?.find(w => w.stopId === s.id)}
-                    isRecalculating={recalcStopIds.has(s.id)} />
+                    isRecalculating={recalcStopIds.has(s.id)} setRecalcStopIds={setRecalcStopIds} />
                 </div>
                 {!dragId && editMode && <AddStopButton onClick={()=>onAddStop(day.day, i + 1)} />}
               </React.Fragment>
