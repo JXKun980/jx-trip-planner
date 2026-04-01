@@ -1053,7 +1053,7 @@
                       </div>
                     </div>
                     <input type="date" value={parseDate(day.date) || ""} onChange={e=>{
-                      const d = new Date(e.target.value + "T00:00:00");
+                      const d = new Date(e.target.value + "T12:00:00");
                       if (!isNaN(d)) onEditDay(day.day, {date: d.toLocaleDateString("en-AU", {weekday:"long", day:"numeric", month:"long", year:"numeric"})});
                     }} className="bg-black/30 border border-white/10 rounded px-2 py-1 text-[11px] text-gray-300" />
                     <input value={day.title} onChange={e=>onEditDay(day.day,{title:e.target.value})}
