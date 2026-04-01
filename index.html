@@ -377,12 +377,23 @@
       return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     }
 
-    // Estimate driving stats from straight-line distance
-    function estimateDriveStats(straightKm) {
-      const roadKm = Math.round(straightKm * 1.35); // road factor
-      const driveMin = Math.round(roadKm / 80 * 60); // ~80km/h avg
-      const battPct = Math.round(roadKm * 0.18); // ~18% per 100km
-      return { dist: roadKm, drive: driveMin, batt: battPct };
+    // Get real road distance + drive time via OSRM (free, no key)
+    async function fetchDriveStats(fromLat, fromLng, toLat, toLng) {
+      try {
+        const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${fromLng},${fromLat};${toLng},${toLat}?overview=false`);
+        const data = await res.json();
+        if (data.code === "Ok" && data.routes && data.routes.length > 0) {
+          const route = data.routes[0];
+          const dist = Math.round(route.distance / 1000); // meters to km
+          const drive = Math.round(route.duration / 60); // seconds to minutes
+          const batt = Math.round(dist * 0.18); // ~18% per 100km
+          return { dist, drive, batt };
+        }
+      } catch {}
+      // Fallback to estimate if OSRM fails
+      const straight = haversine(fromLat, fromLng, toLat, toLng);
+      const roadKm = Math.round(straight * 1.35);
+      return { dist: roadKm, drive: Math.round(roadKm / 80 * 60), batt: Math.round(roadKm * 0.18) };
     }
 
     // Geocode address via Nominatim, returns {lat, lng} or null
@@ -431,7 +442,7 @@
         }, 300));
       };
 
-      const pick = (s) => {
+      const pick = async (s) => {
         setShowSugg(false);
         const updates = {
           address: s.address,
@@ -445,10 +456,10 @@
           updates.type = "charge"; updates.charge = makeChargeDefaults(); updates.emoji = "⚡";
           updates.poi = s.name.replace(/\s+/g, "+");
         }
-        // Auto-calc drive stats if prev stop available
+        // Auto-calc drive stats via OSRM if prev stop available
         if (prevStop && prevStop.lat && s.lat) {
-          const straight = haversine(prevStop.lat, prevStop.lng, s.lat, s.lng);
-          Object.assign(updates, estimateDriveStats(straight));
+          const stats = await fetchDriveStats(prevStop.lat, prevStop.lng, s.lat, s.lng);
+          Object.assign(updates, stats);
         }
         onSelect(updates);
       };
@@ -545,15 +556,15 @@
         if (s.lat && s.lng) moveMap(s.lat, s.lng);
       };
 
-      const handleDone = () => {
+      const handleDone = async () => {
         const updates = { address: addr, name: name || addr.split(",")[0], lat, lng, mq: addr.replace(/\s+/g, "+") };
         if (isChargerName(addr) || isChargerName(name)) {
           updates.type = "charge"; updates.charge = makeChargeDefaults(); updates.emoji = "⚡";
           updates.poi = (name || addr).replace(/\s+/g, "+");
         }
         if (prevStop && prevStop.lat) {
-          const straight = haversine(prevStop.lat, prevStop.lng, lat, lng);
-          Object.assign(updates, estimateDriveStats(straight));
+          const stats = await fetchDriveStats(prevStop.lat, prevStop.lng, lat, lng);
+          Object.assign(updates, stats);
         }
         onSave(updates);
       };
