@@ -1227,8 +1227,12 @@
       }, []);
 
       const [days, setDays] = useState(() => initialLoad?.days || initialDays);
-      const [startTimes, setStartTimes] = useState([{h:8,m:0},{h:7,m:0},{h:7,m:0},{h:6,m:0}]);
-      const [homeBattery, setHomeBattery] = useState(100);
+      const [startTimes, setStartTimes] = useState(() => {
+        try { const s = localStorage.getItem("tripStartTimes"); return s ? JSON.parse(s) : [{h:8,m:0},{h:7,m:0},{h:7,m:0},{h:6,m:0}]; } catch { return [{h:8,m:0},{h:7,m:0},{h:7,m:0},{h:6,m:0}]; }
+      });
+      const [homeBattery, setHomeBattery] = useState(() => {
+        try { const s = localStorage.getItem("tripHomeBattery"); return s ? +s : 100; } catch { return 100; }
+      });
       const [editMode, setEditMode] = useState(false);
       const [shareMsg, setShareMsg] = useState(null);
       const [dragDayNum, setDragDayNum] = useState(null);
@@ -1281,6 +1285,8 @@
         setCanRedo(historyIdx.current < editHistory.current.length - 1);
       };
 
+      React.useEffect(() => { localStorage.setItem("tripStartTimes", JSON.stringify(startTimes)); }, [startTimes]);
+      React.useEffect(() => { localStorage.setItem("tripHomeBattery", String(homeBattery)); }, [homeBattery]);
       React.useEffect(() => { localStorage.setItem("heroTitle", heroTitle); }, [heroTitle]);
       React.useEffect(() => { localStorage.setItem("heroSubtitle", heroSubtitle); }, [heroSubtitle]);
       React.useEffect(() => { localStorage.setItem("heroSnippet", heroSnippet); }, [heroSnippet]);
