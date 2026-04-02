@@ -1359,15 +1359,7 @@
       const [editMode, setEditMode] = useState(false);
 
       const [showResetConfirm, setShowResetConfirm] = useState(false);
-      const onResetToDefaults = () => {
-        localStorage.removeItem("tripDays"); localStorage.removeItem("heroTitle"); localStorage.removeItem("heroSubtitle");
-        localStorage.removeItem("heroSnippet"); localStorage.removeItem("tripStartTimes"); localStorage.removeItem("tripHomeBattery");
-        localStorage.removeItem("tripComments");
-        setDays(initialDays); setHeroTitle("Great Ocean Road"); setHeroSubtitle("& Beyond Adventure");
-        setHeroSnippet("Melbourne → Geelong → Great Ocean Road → Warrnambool → Mount Gambier → Naracoorte → Pink Lake → Home");
-        setStartTimes([{h:11,m:0},{h:10,m:0},{h:10,m:0},{h:9,m:0}]); setHomeBattery(85);
-        setShowResetConfirm(false); setEditMode(false);
-      };
+      const [showSaveConfirm, setShowSaveConfirm] = useState(false);
 
       // Apply cloud data to all state
       const applyCloudData = (data) => {
@@ -1413,6 +1405,7 @@
       const showCloudMsg = (msg) => { setCloudMsg(msg); setTimeout(() => setCloudMsg(null), 3000); };
 
       const onCloudSave = async () => {
+        setShowSaveConfirm(false);
         setCloudSaving(true);
         try {
           await cloudSave(days, heroTitle, heroSubtitle, heroSnippet, startTimes, homeBattery);
@@ -1761,29 +1754,45 @@
                   <span className="text-[11px] font-bold uppercase tracking-widest text-gray-500">JX Travel Planner</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <button onClick={onCloudSave} disabled={cloudSaving}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] hover:border-green-500/40 text-[11px] text-gray-400 hover:text-green-400 transition-all disabled:opacity-50">
-                    {cloudSaving ? "⏳" : "💾"} Save
-                  </button>
+                  {cloudMsg && (
+                    <span className={`text-[11px] font-medium animate-pulse mr-1 ${cloudMsg.startsWith("✕") ? "text-red-400" : "text-green-400"}`}>{cloudMsg}</span>
+                  )}
                   <div className="relative">
-                    <button onClick={()=>setShowResetConfirm(!showResetConfirm)}
+                    <button onClick={()=>{ setShowSaveConfirm(!showSaveConfirm); setShowResetConfirm(false); }} disabled={cloudSaving}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] hover:border-green-500/40 text-[11px] text-gray-400 hover:text-green-400 transition-all disabled:opacity-50">
+                      {cloudSaving ? "⏳" : "💾"} Save
+                    </button>
+                    {showSaveConfirm && (
+                      <div className="absolute top-full right-0 mt-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg shadow-xl p-3 z-50 w-48">
+                        <p className="text-[10px] text-gray-400 mb-2">Save current data to cloud?</p>
+                        <div className="flex gap-1.5">
+                          <button onClick={onCloudSave}
+                            className="flex-1 px-2 py-1.5 rounded bg-green-500/20 hover:bg-green-500/30 text-green-400 text-[10px] font-bold transition-colors">
+                            Confirm
+                          </button>
+                          <button onClick={()=>setShowSaveConfirm(false)}
+                            className="flex-1 px-2 py-1.5 rounded bg-[#2a2a2a] hover:bg-[#3a3a3a] text-gray-400 text-[10px] font-medium transition-colors">
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <button onClick={()=>{ setShowResetConfirm(!showResetConfirm); setShowSaveConfirm(false); }}
                       className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] hover:border-blue-500/40 text-[11px] text-gray-400 hover:text-blue-400 transition-all">
                       ↺ Reset
                     </button>
                     {showResetConfirm && (
-                      <div className="absolute top-full right-0 mt-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg shadow-xl p-3 z-50 w-56">
-                        <p className="text-[10px] text-gray-400 mb-2">Choose reset option:</p>
-                        <div className="flex flex-col gap-1.5">
+                      <div className="absolute top-full right-0 mt-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg shadow-xl p-3 z-50 w-48">
+                        <p className="text-[10px] text-gray-400 mb-2">Discard changes and reload from cloud?</p>
+                        <div className="flex gap-1.5">
                           <button onClick={onCloudReset}
-                            className="w-full px-2 py-1.5 rounded bg-[#2a2a2a] hover:bg-blue-500/20 text-gray-400 hover:text-blue-400 text-[10px] font-medium transition-colors text-left">
-                            ☁️ Reload from cloud
-                          </button>
-                          <button onClick={onResetToDefaults}
-                            className="w-full px-2 py-1.5 rounded bg-[#2a2a2a] hover:bg-red-500/20 text-gray-400 hover:text-red-400 text-[10px] font-medium transition-colors text-left">
-                            🗑️ Reset to defaults
+                            className="flex-1 px-2 py-1.5 rounded bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-[10px] font-bold transition-colors">
+                            Confirm
                           </button>
                           <button onClick={()=>setShowResetConfirm(false)}
-                            className="w-full px-2 py-1.5 rounded bg-blue-500 hover:bg-blue-400 text-white text-[10px] font-bold transition-colors">
+                            className="flex-1 px-2 py-1.5 rounded bg-[#2a2a2a] hover:bg-[#3a3a3a] text-gray-400 text-[10px] font-medium transition-colors">
                             Cancel
                           </button>
                         </div>
@@ -1791,7 +1800,7 @@
                     )}
                   </div>
                   <div className="relative" ref={menuRef}>
-                    <button onClick={()=>{ setMenuOpen(!menuOpen); setShowHistory(false); }}
+                    <button onClick={()=>{ setMenuOpen(!menuOpen); setShowHistory(false); setShowSaveConfirm(false); setShowResetConfirm(false); }}
                       className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] hover:border-gray-500/40 text-[11px] text-gray-400 hover:text-white transition-all">
                       ⋮
                     </button>
@@ -1830,9 +1839,6 @@
                   <input ref={fileInputRef} type="file" accept=".json" onChange={onImportJSON} className="hidden" />
                 </div>
               </div>
-              {cloudMsg && (
-                <div className="mb-2"><span className={`text-[11px] font-medium animate-pulse ${cloudMsg.startsWith("✕") ? "text-red-400" : "text-green-400"}`}>{cloudMsg}</span></div>
-              )}
               {editMode ? (
                 <div className="mb-2 space-y-1">
                   <input value={heroTitle} onChange={e=>setHeroTitle(e.target.value)}
