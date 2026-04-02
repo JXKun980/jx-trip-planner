@@ -8,9 +8,7 @@
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <!-- Firebase SDK (compat mode for CDN usage) -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -1293,103 +1291,49 @@
       return null;
     }
 
-    // ── Firebase / Firestore cloud save ──
-    // ⚠️  SETUP INSTRUCTIONS — complete these steps once:
-    //  1. Go to https://console.firebase.google.com/ and create a new project
-    //     (any name, e.g. "trip-planner"; disable Google Analytics if prompted).
-    //  2. In Project Settings → General, scroll to "Your apps" and click the Web icon (</>).
-    //     Register the app (any nickname). Copy the firebaseConfig object.
-    //  3. Replace the placeholder values below with your real config.
-    //  4. In the Firebase console go to Firestore Database → Create database →
-    //     choose "Start in **test mode**" (or set up security rules later) → pick a region → Done.
-    //  5. Deploy / commit. The app will auto-connect on load.
-    //
-    // Firestore rules (optional, recommended for production):
-    //   rules_version = '2';
-    //   service cloud.firestore {
-    //     match /databases/{database}/documents {
-    //       match /trips/{doc} {
-    //         allow read, write: if true;   // open access – fine for personal use
-    //       }
-    //     }
-    //   }
+    // ── Cloud save via Cloudflare KV (Pages Functions API) ──
+    // ⚠️  SETUP: In Cloudflare dashboard:
+    //  1. Workers & Pages → KV → Create namespace → name it "TRIPS"
+    //  2. Your Pages project → Settings → Functions → KV namespace bindings
+    //     → Variable name: TRIPS, KV namespace: (select TRIPS)
+    //  3. Redeploy. Cloud save will work automatically.
 
-    const FIREBASE_CONFIG = {
-      apiKey:            "AIzaSyDJB8JMz3M-x3xZ2FU3aGPzYQEN67fT7Gs",
-      authDomain:        "jx-trip-planner.firebaseapp.com",
-      projectId:         "jx-trip-planner",
-      storageBucket:     "jx-trip-planner.firebasestorage.app",
-      messagingSenderId: "896897588122",
-      appId:             "1:896897588122:web:b12bcba50fb2e8aa4e4e74",
-    };
-
-    // Initialise Firebase (idempotent — safe to call on every render via module-level)
-    let db = null;
-    try {
-      const app = firebase.app ? firebase.app() : firebase.initializeApp(FIREBASE_CONFIG);
-      db = firebase.firestore();
-    } catch (e) {
-      try { const app = firebase.initializeApp(FIREBASE_CONFIG); db = firebase.firestore(); } catch (e2) { console.warn("Firebase init failed", e2); }
+    async function cloudSave(days, heroTitle, heroSubtitle, heroSnippet, startTimes, homeBattery) {
+      const res = await fetch("/api/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ days, heroTitle, heroSubtitle, heroSnippet, startTimes, homeBattery }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Save failed");
+      return data.savedAt;
     }
 
-    const TRIP_COLLECTION = "trips";
-    const DOC_CURRENT = "current";
-    const HISTORY_DOCS = ["history-1", "history-2", "history-3"];
-
-    function buildSavePayload(days, heroTitle, heroSubtitle, heroSnippet, startTimes, homeBattery) {
-      return { days, heroTitle, heroSubtitle, heroSnippet, startTimes, homeBattery, savedAt: new Date().toISOString() };
-    }
-
-    async function firestoreSave(days, heroTitle, heroSubtitle, heroSnippet, startTimes, homeBattery) {
-      if (!db) throw new Error("Firebase not configured");
-      const col = db.collection(TRIP_COLLECTION);
-      // Read current doc first (for rotation)
-      const curSnap = await col.doc(DOC_CURRENT).get();
-      const curData = curSnap.exists ? curSnap.data() : null;
-      // Rotate history: current → h1, h1 → h2, h2 → h3 (h3 is discarded)
-      if (curData) {
-        const h1Snap = await col.doc(HISTORY_DOCS[0]).get();
-        const h1Data = h1Snap.exists ? h1Snap.data() : null;
-        const h2Snap = await col.doc(HISTORY_DOCS[1]).get();
-        const h2Data = h2Snap.exists ? h2Snap.data() : null;
-        // h2 → h3
-        if (h2Data) await col.doc(HISTORY_DOCS[2]).set(h2Data);
-        // h1 → h2
-        if (h1Data) await col.doc(HISTORY_DOCS[1]).set(h1Data);
-        // current → h1
-        await col.doc(HISTORY_DOCS[0]).set(curData);
-      }
-      // Write new current
-      const payload = buildSavePayload(days, heroTitle, heroSubtitle, heroSnippet, startTimes, homeBattery);
-      await col.doc(DOC_CURRENT).set(payload);
-      return payload.savedAt;
-    }
-
-    async function firestoreLoad() {
-      if (!db) return null;
+    async function cloudLoad() {
       try {
-        const snap = await db.collection(TRIP_COLLECTION).doc(DOC_CURRENT).get();
-        return snap.exists ? snap.data() : null;
+        const res = await fetch("/api/load");
+        if (!res.ok) return null;
+        return await res.json();
       } catch { return null; }
     }
 
-    async function firestoreLoadHistory() {
-      if (!db) return [];
-      const out = [];
-      for (const id of HISTORY_DOCS) {
-        try {
-          const snap = await db.collection(TRIP_COLLECTION).doc(id).get();
-          out.push(snap.exists ? { id, ...snap.data() } : null);
-        } catch { out.push(null); }
-      }
-      return out;
+    async function cloudLoadHistory() {
+      try {
+        const res = await fetch("/api/history");
+        if (!res.ok) return [];
+        return await res.json();
+      } catch { return []; }
     }
 
-    async function firestoreRestore(historyDocId) {
-      if (!db) throw new Error("Firebase not configured");
-      const snap = await db.collection(TRIP_COLLECTION).doc(historyDocId).get();
-      if (!snap.exists) throw new Error("History version not found");
-      return snap.data();
+    async function cloudRestore(id) {
+      const res = await fetch("/api/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Restore failed");
+      return data;
     }
 
     function App() {
@@ -1449,7 +1393,7 @@
       const onCloudSave = async () => {
         setCloudSaving(true);
         try {
-          const ts = await firestoreSave(days, heroTitle, heroSubtitle, heroSnippet, startTimes, homeBattery);
+          await cloudSave(days, heroTitle, heroSubtitle, heroSnippet, startTimes, homeBattery);
           showCloudMsg("✓ Saved to cloud");
         } catch (e) { showCloudMsg("✕ Save failed: " + e.message); }
         setCloudSaving(false);
@@ -1458,7 +1402,7 @@
       const onCloudReset = async () => {
         setCloudSaving(true);
         try {
-          const data = await firestoreLoad();
+          const data = await cloudLoad();
           if (data) {
             if (data.days) setDays(data.days);
             if (data.heroTitle) setHeroTitle(data.heroTitle);
@@ -1475,14 +1419,14 @@
 
       const onShowHistory = async () => {
         setShowHistory(true);
-        const items = await firestoreLoadHistory();
+        const items = await cloudLoadHistory();
         setHistoryItems(items);
       };
 
       const onRestoreHistory = async (docId) => {
         setCloudSaving(true); setMenuOpen(false); setShowHistory(false);
         try {
-          const data = await firestoreRestore(docId);
+          const data = await cloudRestore(docId);
           if (data.days) setDays(data.days);
           if (data.heroTitle) setHeroTitle(data.heroTitle);
           if (data.heroSubtitle) setHeroSubtitle(data.heroSubtitle);
