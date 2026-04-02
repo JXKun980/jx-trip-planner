@@ -9,6 +9,10 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#3b82f6" />
+  <link rel="icon" href="/icon-192.png" />
+  <link rel="apple-touch-icon" href="/icon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -40,6 +44,12 @@
     .day-gradient-3 { background: linear-gradient(135deg, #3a1a3a 0%, #1a0a1a 100%); }
     .day-gradient-4 { background: linear-gradient(135deg, #3a2a1a 0%, #1a140a 100%); }
     @keyframes slideBar { 0% { transform: translateX(-100%); } 100% { transform: translateX(400%); } }
+    @keyframes splash-bolt { 0%,100% { transform: scale(1); filter: drop-shadow(0 0 20px rgba(59,130,246,0.6)); } 50% { transform: scale(1.15); filter: drop-shadow(0 0 40px rgba(20,184,166,0.8)); } }
+    @keyframes splash-glow { 0%,100% { opacity: 0.3; transform: scale(1); } 50% { opacity: 0.7; transform: scale(1.3); } }
+    @keyframes splash-text { 0% { opacity: 0; transform: translateY(10px); } 100% { opacity: 1; transform: translateY(0); } }
+    @keyframes splash-bar { 0% { width: 0; } 100% { width: 200px; } }
+    @keyframes splash-dots { 0%,20% { opacity: 0.2; } 50% { opacity: 1; } 80%,100% { opacity: 0.2; } }
+    @keyframes splash-ring { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     input[type=range] { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 9999px; cursor: pointer; }
     input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #fff; cursor: pointer; }
     input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #fff; cursor: pointer; border: none; }
@@ -1276,20 +1286,7 @@
       return b;
     }
 
-    // ── Share/Export/Import helpers ──
-    function encodeTrip(data) {
-      return btoa(unescape(encodeURIComponent(JSON.stringify(data))));
-    }
-    function decodeTrip(str) {
-      return JSON.parse(decodeURIComponent(escape(atob(str))));
-    }
-    function loadFromHash() {
-      try {
-        const hash = window.location.hash.slice(1);
-        if (hash && hash.startsWith("trip=")) return decodeTrip(hash.slice(5));
-      } catch {}
-      return null;
-    }
+    // ── Export/Import helpers ──
 
     // ── Cloud save via Cloudflare KV (Pages Functions API) ──
     // ⚠️  SETUP: In Cloudflare dashboard:
@@ -1299,10 +1296,11 @@
     //  3. Redeploy. Cloud save will work automatically.
 
     async function cloudSave(days, heroTitle, heroSubtitle, heroSnippet, startTimes, homeBattery) {
+      const comments = loadComments();
       const res = await fetch("/api/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ days, heroTitle, heroSubtitle, heroSnippet, startTimes, homeBattery }),
+        body: JSON.stringify({ days, heroTitle, heroSubtitle, heroSnippet, startTimes, homeBattery, comments }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Save failed");
@@ -1337,10 +1335,8 @@
     }
 
     function App() {
-      // Load from URL hash first, then localStorage, then defaults
+      // Load from localStorage as initial fallback (cloud overwrites on mount)
       const initialLoad = useMemo(() => {
-        const fromHash = loadFromHash();
-        if (fromHash) return fromHash;
         try {
           const s = localStorage.getItem("tripDays");
           if (s) return {
@@ -1361,7 +1357,7 @@
         try { const s = localStorage.getItem("tripHomeBattery"); return s ? +s : 85; } catch { return 85; }
       });
       const [editMode, setEditMode] = useState(false);
-      const [shareMsg, setShareMsg] = useState(null);
+
       const [showResetConfirm, setShowResetConfirm] = useState(false);
       const onResetToDefaults = () => {
         localStorage.removeItem("tripDays"); localStorage.removeItem("heroTitle"); localStorage.removeItem("heroSubtitle");
@@ -1373,23 +1369,29 @@
         setShowResetConfirm(false); setEditMode(false);
       };
 
-      // ── Auto-load from cloud on mount (unless URL hash is present) ──
+      // Apply cloud data to all state
+      const applyCloudData = (data) => {
+        if (data.days) setDays(data.days);
+        if (data.heroTitle) setHeroTitle(data.heroTitle);
+        if (data.heroSubtitle) setHeroSubtitle(data.heroSubtitle);
+        if (data.heroSnippet) setHeroSnippet(data.heroSnippet);
+        if (data.startTimes) setStartTimes(data.startTimes);
+        if (data.homeBattery != null) setHomeBattery(data.homeBattery);
+        if (data.comments) saveComments(data.comments);
+      };
+
+      // ── Auto-load from cloud on mount (3s timeout fallback to localStorage) ──
       const [cloudLoaded, setCloudLoaded] = useState(false);
       React.useEffect(() => {
-        if (loadFromHash()) return; // URL hash takes priority
+        let done = false;
+        const timeout = setTimeout(() => { if (!done) { done = true; setCloudLoaded(true); } }, 3000);
         (async () => {
           try {
             const data = await cloudLoad();
-            if (data && data.days) {
-              setDays(data.days);
-              if (data.heroTitle) setHeroTitle(data.heroTitle);
-              if (data.heroSubtitle) setHeroSubtitle(data.heroSubtitle);
-              if (data.heroSnippet) setHeroSnippet(data.heroSnippet);
-              if (data.startTimes) setStartTimes(data.startTimes);
-              if (data.homeBattery != null) setHomeBattery(data.homeBattery);
-            }
+            if (!done && data && data.days) applyCloudData(data);
           } catch {}
-          setCloudLoaded(true);
+          if (!done) { done = true; setCloudLoaded(true); }
+          clearTimeout(timeout);
         })();
       }, []);
 
@@ -1424,12 +1426,7 @@
         try {
           const data = await cloudLoad();
           if (data) {
-            if (data.days) setDays(data.days);
-            if (data.heroTitle) setHeroTitle(data.heroTitle);
-            if (data.heroSubtitle) setHeroSubtitle(data.heroSubtitle);
-            if (data.heroSnippet) setHeroSnippet(data.heroSnippet);
-            if (data.startTimes) setStartTimes(data.startTimes);
-            if (data.homeBattery != null) setHomeBattery(data.homeBattery);
+            applyCloudData(data);
             showCloudMsg("✓ Loaded from cloud");
           } else { showCloudMsg("No cloud save found"); }
         } catch (e) { showCloudMsg("✕ Load failed: " + e.message); }
@@ -1447,12 +1444,7 @@
         setCloudSaving(true); setMenuOpen(false); setShowHistory(false);
         try {
           const data = await cloudRestore(docId);
-          if (data.days) setDays(data.days);
-          if (data.heroTitle) setHeroTitle(data.heroTitle);
-          if (data.heroSubtitle) setHeroSubtitle(data.heroSubtitle);
-          if (data.heroSnippet) setHeroSnippet(data.heroSnippet);
-          if (data.startTimes) setStartTimes(data.startTimes);
-          if (data.homeBattery != null) setHomeBattery(data.homeBattery);
+          applyCloudData(data);
           showCloudMsg("✓ Restored from history");
         } catch (e) { showCloudMsg("✕ Restore failed: " + e.message); }
         setCloudSaving(false);
@@ -1629,18 +1621,6 @@
 
       const fileInputRef = React.useRef(null);
 
-      const onShareURL = () => {
-        const data = { days, heroTitle, heroSubtitle, heroSnippet };
-        const encoded = encodeTrip(data);
-        const url = window.location.origin + window.location.pathname + "#trip=" + encoded;
-        navigator.clipboard.writeText(url).then(() => {
-          setShareMsg("✓ Link copied to clipboard!");
-          setTimeout(() => setShareMsg(null), 3000);
-        }).catch(() => {
-          prompt("Copy this link:", url);
-        });
-      };
-
       const onExportJSON = () => {
         const data = { days, heroTitle, heroSubtitle, heroSnippet, startTimes, homeBattery };
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -1663,8 +1643,7 @@
             if (data.heroSnippet) setHeroSnippet(data.heroSnippet);
             if (data.startTimes) setStartTimes(data.startTimes);
             if (data.homeBattery) setHomeBattery(data.homeBattery);
-            setShareMsg("✓ Trip imported!");
-            setTimeout(() => setShareMsg(null), 3000);
+            showCloudMsg("✓ Trip imported!");
           } catch { alert("Invalid trip file"); }
         };
         reader.readAsText(file);
@@ -1730,6 +1709,41 @@
         return {d,dr,s,c,cs};
       },[daysWithBattery]);
 
+      if (!cloudLoaded) return (
+        <div className="min-h-screen flex flex-col items-center justify-center relative overflow-hidden">
+          {/* Animated background */}
+          <div className="absolute inset-0 bg-gradient-to-br from-blue-900/20 via-teal-900/10 to-purple-900/20" />
+          <div className="absolute inset-0" style={{background:"radial-gradient(circle at 50% 40%, rgba(59,130,246,0.08) 0%, transparent 60%)"}}>
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full" style={{background:"radial-gradient(circle, rgba(20,184,166,0.15) 0%, transparent 70%)", animation:"splash-glow 3s ease-in-out infinite"}} />
+          </div>
+          {/* Spinning ring */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-40 h-40 rounded-full border-2 border-transparent opacity-20" style={{borderTopColor:"#3b82f6", borderRightColor:"#14b8a6", animation:"splash-ring 2s linear infinite"}} />
+          {/* Content */}
+          <div className="relative z-10 flex flex-col items-center">
+            <div style={{animation:"splash-bolt 2s ease-in-out infinite"}} className="text-7xl mb-6">⚡</div>
+            <div style={{animation:"splash-text 0.6s ease-out forwards"}} className="mb-2">
+              <span className="text-[11px] font-bold uppercase tracking-[0.3em] text-gray-500">Tesla Trip Planner</span>
+            </div>
+            <div style={{animation:"splash-text 0.6s ease-out 0.2s forwards", opacity:0}} className="mb-8">
+              <h1 className="text-2xl font-extrabold"><span className="gradient-text">Loading your trip</span></h1>
+            </div>
+            {/* Animated progress bar */}
+            <div className="w-52 h-1 rounded-full bg-[#1a1a1a] overflow-hidden mb-4">
+              <div className="h-full rounded-full" style={{background:"linear-gradient(90deg, #3b82f6, #14b8a6, #3b82f6)", backgroundSize:"200% 100%", animation:"splash-bar 2s ease-in-out infinite alternate, slideBar 1.5s linear infinite"}} />
+            </div>
+            {/* Animated dots */}
+            <div className="flex gap-2" style={{animation:"splash-text 0.6s ease-out 0.4s forwards", opacity:0}}>
+              {[0, 1, 2].map(i => (
+                <span key={i} className="text-[10px] text-gray-500" style={{animation:`splash-dots 1.4s ease-in-out ${i * 0.2}s infinite`}}>●</span>
+              ))}
+            </div>
+            <div style={{animation:"splash-text 0.6s ease-out 0.5s forwards", opacity:0}} className="mt-4">
+              <span className="text-[10px] text-gray-600">Syncing from cloud</span>
+            </div>
+          </div>
+        </div>
+      );
+
       return (
         <div className={`min-h-screen ${editMode ? "bg-[#0d0d1a]" : ""}`} style={editMode ? {boxShadow:"inset 0 0 200px rgba(59,130,246,0.03)"} : {}}>
           {editMode && (
@@ -1783,12 +1797,8 @@
                     </button>
                     {menuOpen && (
                       <div className="absolute top-full right-0 mt-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg shadow-xl z-50 w-52 overflow-hidden">
-                        <button onClick={()=>{ onShareURL(); setMenuOpen(false); }}
-                          className="w-full px-3 py-2 text-left text-[11px] text-gray-300 hover:bg-[#2a2a2a] hover:text-white transition-colors flex items-center gap-2">
-                          🔗 Share Link
-                        </button>
                         <button onClick={()=>{ onExportJSON(); setMenuOpen(false); }}
-                          className="w-full px-3 py-2 text-left text-[11px] text-gray-300 hover:bg-[#2a2a2a] hover:text-white transition-colors flex items-center gap-2 border-t border-[#222]">
+                          className="w-full px-3 py-2 text-left text-[11px] text-gray-300 hover:bg-[#2a2a2a] hover:text-white transition-colors flex items-center gap-2">
                           📥 Export JSON
                         </button>
                         <button onClick={()=>{ fileInputRef.current?.click(); setMenuOpen(false); }}
@@ -1820,8 +1830,8 @@
                   <input ref={fileInputRef} type="file" accept=".json" onChange={onImportJSON} className="hidden" />
                 </div>
               </div>
-              {(shareMsg || cloudMsg) && (
-                <div className="mb-2"><span className={`text-[11px] font-medium animate-pulse ${(shareMsg || cloudMsg || "").startsWith("✕") ? "text-red-400" : "text-green-400"}`}>{shareMsg || cloudMsg}</span></div>
+              {cloudMsg && (
+                <div className="mb-2"><span className={`text-[11px] font-medium animate-pulse ${cloudMsg.startsWith("✕") ? "text-red-400" : "text-green-400"}`}>{cloudMsg}</span></div>
               )}
               {editMode ? (
                 <div className="mb-2 space-y-1">
@@ -2000,6 +2010,11 @@
     }
 
     ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
   </script>
 </body>
 </html>
