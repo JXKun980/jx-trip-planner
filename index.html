@@ -8,6 +8,9 @@
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Firebase SDK (compat mode for CDN usage) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -1290,6 +1293,105 @@
       return null;
     }
 
+    // ── Firebase / Firestore cloud save ──
+    // ⚠️  SETUP INSTRUCTIONS — complete these steps once:
+    //  1. Go to https://console.firebase.google.com/ and create a new project
+    //     (any name, e.g. "trip-planner"; disable Google Analytics if prompted).
+    //  2. In Project Settings → General, scroll to "Your apps" and click the Web icon (</>).
+    //     Register the app (any nickname). Copy the firebaseConfig object.
+    //  3. Replace the placeholder values below with your real config.
+    //  4. In the Firebase console go to Firestore Database → Create database →
+    //     choose "Start in **test mode**" (or set up security rules later) → pick a region → Done.
+    //  5. Deploy / commit. The app will auto-connect on load.
+    //
+    // Firestore rules (optional, recommended for production):
+    //   rules_version = '2';
+    //   service cloud.firestore {
+    //     match /databases/{database}/documents {
+    //       match /trips/{doc} {
+    //         allow read, write: if true;   // open access – fine for personal use
+    //       }
+    //     }
+    //   }
+
+    const FIREBASE_CONFIG = {
+      apiKey:            "AIzaSyDJB8JMz3M-x3xZ2FU3aGPzYQEN67fT7Gs",
+      authDomain:        "jx-trip-planner.firebaseapp.com",
+      projectId:         "jx-trip-planner",
+      storageBucket:     "jx-trip-planner.firebasestorage.app",
+      messagingSenderId: "896897588122",
+      appId:             "1:896897588122:web:b12bcba50fb2e8aa4e4e74",
+    };
+
+    // Initialise Firebase (idempotent — safe to call on every render via module-level)
+    let db = null;
+    try {
+      const app = firebase.app ? firebase.app() : firebase.initializeApp(FIREBASE_CONFIG);
+      db = firebase.firestore();
+    } catch (e) {
+      try { const app = firebase.initializeApp(FIREBASE_CONFIG); db = firebase.firestore(); } catch (e2) { console.warn("Firebase init failed", e2); }
+    }
+
+    const TRIP_COLLECTION = "trips";
+    const DOC_CURRENT = "current";
+    const HISTORY_DOCS = ["history-1", "history-2", "history-3"];
+
+    function buildSavePayload(days, heroTitle, heroSubtitle, heroSnippet, startTimes, homeBattery) {
+      return { days, heroTitle, heroSubtitle, heroSnippet, startTimes, homeBattery, savedAt: new Date().toISOString() };
+    }
+
+    async function firestoreSave(days, heroTitle, heroSubtitle, heroSnippet, startTimes, homeBattery) {
+      if (!db) throw new Error("Firebase not configured");
+      const col = db.collection(TRIP_COLLECTION);
+      // Read current doc first (for rotation)
+      const curSnap = await col.doc(DOC_CURRENT).get();
+      const curData = curSnap.exists ? curSnap.data() : null;
+      // Rotate history: current → h1, h1 → h2, h2 → h3 (h3 is discarded)
+      if (curData) {
+        const h1Snap = await col.doc(HISTORY_DOCS[0]).get();
+        const h1Data = h1Snap.exists ? h1Snap.data() : null;
+        const h2Snap = await col.doc(HISTORY_DOCS[1]).get();
+        const h2Data = h2Snap.exists ? h2Snap.data() : null;
+        // h2 → h3
+        if (h2Data) await col.doc(HISTORY_DOCS[2]).set(h2Data);
+        // h1 → h2
+        if (h1Data) await col.doc(HISTORY_DOCS[1]).set(h1Data);
+        // current → h1
+        await col.doc(HISTORY_DOCS[0]).set(curData);
+      }
+      // Write new current
+      const payload = buildSavePayload(days, heroTitle, heroSubtitle, heroSnippet, startTimes, homeBattery);
+      await col.doc(DOC_CURRENT).set(payload);
+      return payload.savedAt;
+    }
+
+    async function firestoreLoad() {
+      if (!db) return null;
+      try {
+        const snap = await db.collection(TRIP_COLLECTION).doc(DOC_CURRENT).get();
+        return snap.exists ? snap.data() : null;
+      } catch { return null; }
+    }
+
+    async function firestoreLoadHistory() {
+      if (!db) return [];
+      const out = [];
+      for (const id of HISTORY_DOCS) {
+        try {
+          const snap = await db.collection(TRIP_COLLECTION).doc(id).get();
+          out.push(snap.exists ? { id, ...snap.data() } : null);
+        } catch { out.push(null); }
+      }
+      return out;
+    }
+
+    async function firestoreRestore(historyDocId) {
+      if (!db) throw new Error("Firebase not configured");
+      const snap = await db.collection(TRIP_COLLECTION).doc(historyDocId).get();
+      if (!snap.exists) throw new Error("History version not found");
+      return snap.data();
+    }
+
     function App() {
       // Load from URL hash first, then localStorage, then defaults
       const initialLoad = useMemo(() => {
@@ -1326,6 +1428,72 @@
         setStartTimes([{h:11,m:0},{h:10,m:0},{h:10,m:0},{h:9,m:0}]); setHomeBattery(85);
         setShowResetConfirm(false); setEditMode(false);
       };
+
+      // ── Cloud save state ──
+      const [cloudSaving, setCloudSaving] = useState(false);
+      const [cloudMsg, setCloudMsg] = useState(null);
+      const [menuOpen, setMenuOpen] = useState(false);
+      const [historyItems, setHistoryItems] = useState([]);
+      const [showHistory, setShowHistory] = useState(false);
+      const menuRef = React.useRef(null);
+
+      // Close menu on outside click
+      React.useEffect(() => {
+        const handler = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) { setMenuOpen(false); setShowHistory(false); }};
+        document.addEventListener("mousedown", handler);
+        return () => document.removeEventListener("mousedown", handler);
+      }, []);
+
+      const showCloudMsg = (msg) => { setCloudMsg(msg); setTimeout(() => setCloudMsg(null), 3000); };
+
+      const onCloudSave = async () => {
+        setCloudSaving(true);
+        try {
+          const ts = await firestoreSave(days, heroTitle, heroSubtitle, heroSnippet, startTimes, homeBattery);
+          showCloudMsg("✓ Saved to cloud");
+        } catch (e) { showCloudMsg("✕ Save failed: " + e.message); }
+        setCloudSaving(false);
+      };
+
+      const onCloudReset = async () => {
+        setCloudSaving(true);
+        try {
+          const data = await firestoreLoad();
+          if (data) {
+            if (data.days) setDays(data.days);
+            if (data.heroTitle) setHeroTitle(data.heroTitle);
+            if (data.heroSubtitle) setHeroSubtitle(data.heroSubtitle);
+            if (data.heroSnippet) setHeroSnippet(data.heroSnippet);
+            if (data.startTimes) setStartTimes(data.startTimes);
+            if (data.homeBattery != null) setHomeBattery(data.homeBattery);
+            showCloudMsg("✓ Loaded from cloud");
+          } else { showCloudMsg("No cloud save found"); }
+        } catch (e) { showCloudMsg("✕ Load failed: " + e.message); }
+        setCloudSaving(false);
+        setShowResetConfirm(false);
+      };
+
+      const onShowHistory = async () => {
+        setShowHistory(true);
+        const items = await firestoreLoadHistory();
+        setHistoryItems(items);
+      };
+
+      const onRestoreHistory = async (docId) => {
+        setCloudSaving(true); setMenuOpen(false); setShowHistory(false);
+        try {
+          const data = await firestoreRestore(docId);
+          if (data.days) setDays(data.days);
+          if (data.heroTitle) setHeroTitle(data.heroTitle);
+          if (data.heroSubtitle) setHeroSubtitle(data.heroSubtitle);
+          if (data.heroSnippet) setHeroSnippet(data.heroSnippet);
+          if (data.startTimes) setStartTimes(data.startTimes);
+          if (data.homeBattery != null) setHomeBattery(data.homeBattery);
+          showCloudMsg("✓ Restored from history");
+        } catch (e) { showCloudMsg("✕ Restore failed: " + e.message); }
+        setCloudSaving(false);
+      };
+
       const [recalcStopIds, setRecalcStopIds] = useState(new Set());
       const [dragDayNum, setDragDayNum] = useState(null);
       const [hoverDayIdx, setHoverDayIdx] = useState(null);
@@ -1615,44 +1783,81 @@
                   <span className="text-[11px] font-bold uppercase tracking-widest text-gray-500">Tesla Trip Planner</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <button onClick={onShareURL}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] hover:border-blue-500/40 text-[11px] text-gray-400 hover:text-blue-400 transition-all">
-                    🔗 Share
+                  <button onClick={onCloudSave} disabled={cloudSaving}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] hover:border-green-500/40 text-[11px] text-gray-400 hover:text-green-400 transition-all disabled:opacity-50">
+                    {cloudSaving ? "⏳" : "💾"} Save
                   </button>
-                  <button onClick={onExportJSON}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] hover:border-green-500/40 text-[11px] text-gray-400 hover:text-green-400 transition-all">
-                    📥 Export
-                  </button>
-                  <button onClick={()=>fileInputRef.current?.click()}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] hover:border-purple-500/40 text-[11px] text-gray-400 hover:text-purple-400 transition-all">
-                    📤 Import
-                  </button>
-                  <input ref={fileInputRef} type="file" accept=".json" onChange={onImportJSON} className="hidden" />
                   <div className="relative">
                     <button onClick={()=>setShowResetConfirm(!showResetConfirm)}
-                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] hover:border-red-500/40 text-[11px] text-gray-400 hover:text-red-400 transition-all">
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] hover:border-blue-500/40 text-[11px] text-gray-400 hover:text-blue-400 transition-all">
                       ↺ Reset
                     </button>
                     {showResetConfirm && (
-                      <div className="absolute top-full right-0 mt-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg shadow-xl p-3 z-50 w-48">
-                        <p className="text-[10px] text-gray-400 mb-2">Reset all data to defaults? This cannot be undone.</p>
-                        <div className="flex gap-1.5">
+                      <div className="absolute top-full right-0 mt-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg shadow-xl p-3 z-50 w-56">
+                        <p className="text-[10px] text-gray-400 mb-2">Choose reset option:</p>
+                        <div className="flex flex-col gap-1.5">
+                          <button onClick={onCloudReset}
+                            className="w-full px-2 py-1.5 rounded bg-[#2a2a2a] hover:bg-blue-500/20 text-gray-400 hover:text-blue-400 text-[10px] font-medium transition-colors text-left">
+                            ☁️ Reload from cloud
+                          </button>
                           <button onClick={onResetToDefaults}
-                            className="flex-1 px-2 py-1.5 rounded bg-[#2a2a2a] hover:bg-red-500/20 text-gray-400 hover:text-red-400 text-[10px] font-medium transition-colors">
-                            Confirm
+                            className="w-full px-2 py-1.5 rounded bg-[#2a2a2a] hover:bg-red-500/20 text-gray-400 hover:text-red-400 text-[10px] font-medium transition-colors text-left">
+                            🗑️ Reset to defaults
                           </button>
                           <button onClick={()=>setShowResetConfirm(false)}
-                            className="flex-1 px-2 py-1.5 rounded bg-blue-500 hover:bg-blue-400 text-white text-[10px] font-bold transition-colors">
+                            className="w-full px-2 py-1.5 rounded bg-blue-500 hover:bg-blue-400 text-white text-[10px] font-bold transition-colors">
                             Cancel
                           </button>
                         </div>
                       </div>
                     )}
                   </div>
+                  <div className="relative" ref={menuRef}>
+                    <button onClick={()=>{ setMenuOpen(!menuOpen); setShowHistory(false); }}
+                      className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] hover:border-gray-500/40 text-[11px] text-gray-400 hover:text-white transition-all">
+                      ⋮
+                    </button>
+                    {menuOpen && (
+                      <div className="absolute top-full right-0 mt-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg shadow-xl z-50 w-52 overflow-hidden">
+                        <button onClick={()=>{ onShareURL(); setMenuOpen(false); }}
+                          className="w-full px-3 py-2 text-left text-[11px] text-gray-300 hover:bg-[#2a2a2a] hover:text-white transition-colors flex items-center gap-2">
+                          🔗 Share Link
+                        </button>
+                        <button onClick={()=>{ onExportJSON(); setMenuOpen(false); }}
+                          className="w-full px-3 py-2 text-left text-[11px] text-gray-300 hover:bg-[#2a2a2a] hover:text-white transition-colors flex items-center gap-2 border-t border-[#222]">
+                          📥 Export JSON
+                        </button>
+                        <button onClick={()=>{ fileInputRef.current?.click(); setMenuOpen(false); }}
+                          className="w-full px-3 py-2 text-left text-[11px] text-gray-300 hover:bg-[#2a2a2a] hover:text-white transition-colors flex items-center gap-2 border-t border-[#222]">
+                          📤 Import JSON
+                        </button>
+                        <button onClick={onShowHistory}
+                          className="w-full px-3 py-2 text-left text-[11px] text-gray-300 hover:bg-[#2a2a2a] hover:text-white transition-colors flex items-center gap-2 border-t border-[#222]">
+                          🕰️ Restore from History {showHistory ? "▲" : "▼"}
+                        </button>
+                        {showHistory && (
+                          <div className="border-t border-[#222] bg-[#111]">
+                            {historyItems.filter(Boolean).length === 0 ? (
+                              <div className="px-3 py-2 text-[10px] text-gray-500">No history versions saved yet.</div>
+                            ) : (
+                              historyItems.map((h, i) => h && (
+                                <button key={h.id} onClick={()=>onRestoreHistory(h.id)}
+                                  className="w-full px-4 py-2 text-left text-[10px] text-gray-400 hover:bg-[#2a2a2a] hover:text-white transition-colors flex items-center gap-2 border-t border-[#1a1a1a]">
+                                  <span className="text-gray-500">#{i+1}</span>
+                                  <span>{h.savedAt ? new Date(h.savedAt).toLocaleString() : "Unknown date"}</span>
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <input ref={fileInputRef} type="file" accept=".json" onChange={onImportJSON} className="hidden" />
                 </div>
               </div>
-              {shareMsg && (
-                <div className="mb-2"><span className="text-[11px] text-green-400 font-medium animate-pulse">{shareMsg}</span></div>
+              {(shareMsg || cloudMsg) && (
+                <div className="mb-2"><span className={`text-[11px] font-medium animate-pulse ${(shareMsg || cloudMsg || "").startsWith("✕") ? "text-red-400" : "text-green-400"}`}>{shareMsg || cloudMsg}</span></div>
               )}
               {editMode ? (
                 <div className="mb-2 space-y-1">
