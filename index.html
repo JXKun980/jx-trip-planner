@@ -1513,6 +1513,16 @@
         })();
       }, []);
 
+      // ── Offline detection ──
+      const [isOffline, setIsOffline] = useState(!navigator.onLine);
+      React.useEffect(() => {
+        const goOffline = () => setIsOffline(true);
+        const goOnline = () => setIsOffline(false);
+        window.addEventListener("offline", goOffline);
+        window.addEventListener("online", goOnline);
+        return () => { window.removeEventListener("offline", goOffline); window.removeEventListener("online", goOnline); };
+      }, []);
+
       // ── Cloud save state ──
       const [cloudSaving, setCloudSaving] = useState(false);
       const [cloudMsg, setCloudMsg] = useState(null);
@@ -1997,8 +2007,13 @@
       return (
         <div className={`min-h-screen ${editMode ? "bg-[#0d0d1a]" : ""}`} style={editMode ? {boxShadow:"inset 0 0 200px rgba(59,130,246,0.03)"} : {}}>
           <ConflictModal />
+          {isOffline && (
+            <div className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-gray-600 via-gray-500 to-gray-600 flex items-center justify-center py-1.5 shadow-lg">
+              <span className="text-[11px] font-bold text-white tracking-widest uppercase">📡 Offline — Changes saved locally</span>
+            </div>
+          )}
           {editMode && (
-            <div className="fixed top-0 left-0 right-0 z-40 bg-gradient-to-r from-blue-600 via-blue-500 to-blue-600 flex items-center justify-center py-1.5 shadow-lg">
+            <div className={`fixed left-0 right-0 z-40 bg-gradient-to-r from-blue-600 via-blue-500 to-blue-600 flex items-center justify-center py-1.5 shadow-lg`} style={{top: isOffline ? "28px" : "0"}}>
               <span className="text-[11px] font-bold text-white tracking-widest uppercase">✏️ Edit Mode</span>
             </div>
           )}
