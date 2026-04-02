@@ -1524,13 +1524,13 @@
 
       // Apply cloud data to all state + update base snapshot
       const applyCloudData = (data, updateBase) => {
-        if (data.days) setDays(data.days);
-        if (data.heroTitle) setHeroTitle(data.heroTitle);
-        if (data.heroSubtitle) setHeroSubtitle(data.heroSubtitle);
-        if (data.heroSnippet) setHeroSnippet(data.heroSnippet);
-        if (data.startTimes) setStartTimes(data.startTimes);
-        if (data.homeBattery != null) setHomeBattery(data.homeBattery);
-        if (data.comments) saveComments(data.comments);
+        setDays(data.days || []);
+        setHeroTitle(data.heroTitle ?? "New Trip");
+        setHeroSubtitle(data.heroSubtitle ?? "");
+        setHeroSnippet(data.heroSnippet ?? "");
+        setStartTimes(data.startTimes || []);
+        setHomeBattery(data.homeBattery ?? 100);
+        saveComments(data.comments || {});
         if (updateBase !== false) baseSnapshot.current = JSON.parse(JSON.stringify(data));
       };
 
