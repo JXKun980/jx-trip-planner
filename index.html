@@ -1474,6 +1474,20 @@
       return data;
     }
 
+    // ── Google Transit API (via server proxy) ──
+    async function fetchTransitOptions(fromLat, fromLng, toLat, toLng, departureISO) {
+      try {
+        const params = new URLSearchParams({
+          from: `${fromLat},${fromLng}`,
+          to: `${toLat},${toLng}`,
+        });
+        if (departureISO) params.set("departure", departureISO);
+        const res = await fetch(`/api/transit?${params}`);
+        if (!res.ok) { const err = await res.json(); return { error: err.error || err.message || "No routes" }; }
+        return await res.json();
+      } catch { return { error: "Transit API unavailable" }; }
+    }
+
     async function cloudRestore(id) {
       const res = await fetch("/api/restore", {
         method: "POST",
