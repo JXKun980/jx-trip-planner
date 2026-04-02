@@ -1373,6 +1373,26 @@
         setShowResetConfirm(false); setEditMode(false);
       };
 
+      // ── Auto-load from cloud on mount (unless URL hash is present) ──
+      const [cloudLoaded, setCloudLoaded] = useState(false);
+      React.useEffect(() => {
+        if (loadFromHash()) return; // URL hash takes priority
+        (async () => {
+          try {
+            const data = await cloudLoad();
+            if (data && data.days) {
+              setDays(data.days);
+              if (data.heroTitle) setHeroTitle(data.heroTitle);
+              if (data.heroSubtitle) setHeroSubtitle(data.heroSubtitle);
+              if (data.heroSnippet) setHeroSnippet(data.heroSnippet);
+              if (data.startTimes) setStartTimes(data.startTimes);
+              if (data.homeBattery != null) setHomeBattery(data.homeBattery);
+            }
+          } catch {}
+          setCloudLoaded(true);
+        })();
+      }, []);
+
       // ── Cloud save state ──
       const [cloudSaving, setCloudSaving] = useState(false);
       const [cloudMsg, setCloudMsg] = useState(null);
