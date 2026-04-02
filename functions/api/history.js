@@ -1,10 +1,12 @@
-// GET /api/history — list 3 history versions
+// GET /api/history?tripId=xxx — list 3 history versions for a trip
 export async function onRequestGet(context) {
   const KV = context.env.TRIPS;
   if (!KV) return new Response(JSON.stringify({ error: "KV not configured" }), { status: 500, headers: { "Content-Type": "application/json" } });
 
   try {
-    const ids = ["trip:history-1", "trip:history-2", "trip:history-3"];
+    const url = new URL(context.request.url);
+    const tripId = url.searchParams.get("tripId") || "trip-default";
+    const ids = [`trip:${tripId}:history-1`, `trip:${tripId}:history-2`, `trip:${tripId}:history-3`];
     const items = [];
     for (const id of ids) {
       const data = await KV.get(id, "json");

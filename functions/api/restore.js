@@ -1,4 +1,4 @@
-// POST /api/restore — restore a history version
+// POST /api/restore — restore a history version for a trip
 export async function onRequestPost(context) {
   const KV = context.env.TRIPS;
   if (!KV) return new Response(JSON.stringify({ error: "KV not configured" }), { status: 500, headers: { "Content-Type": "application/json" } });
