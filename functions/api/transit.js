@@ -1,5 +1,5 @@
 // GET /api/transit?from=lat,lng&to=lat,lng&departure=ISO_TIMESTAMP
-// Proxies to Google Directions API (transit mode) — keeps API key server-side
+// Proxies to Google Routes API (Compute Routes, transit mode)
 // ENV VAR needed: GOOGLE_MAPS_API_KEY
 
 export async function onRequestGet(context) {
@@ -11,62 +11,73 @@ export async function onRequestGet(context) {
     const url = new URL(context.request.url);
     const from = url.searchParams.get("from");
     const to = url.searchParams.get("to");
-    const departure = url.searchParams.get("departure"); // ISO timestamp or unix seconds
+    const departure = url.searchParams.get("departure");
 
     if (!from || !to) return new Response(JSON.stringify({ error: "Missing from/to params (lat,lng)" }), { status: 400, headers: { "Content-Type": "application/json" } });
 
-    // Build Google Directions API URL
-    const params = new URLSearchParams({
-      origin: from,
-      destination: to,
-      mode: "transit",
-      alternatives: "true",
-      key: apiKey,
-    });
+    const [fromLat, fromLng] = from.split(",").map(Number);
+    const [toLat, toLng] = to.split(",").map(Number);
 
-    // Add departure time (Google expects unix timestamp in seconds)
+    // Build Routes API request body
+    const body = {
+      origin: { location: { latLng: { latitude: fromLat, longitude: fromLng } } },
+      destination: { location: { latLng: { latitude: toLat, longitude: toLng } } },
+      travelMode: "TRANSIT",
+      computeAlternativeRoutes: true,
+    };
+
     if (departure) {
-      const ts = Math.floor(new Date(departure).getTime() / 1000);
-      if (!isNaN(ts)) params.set("departure_time", String(ts));
-    } else {
-      // Default to "now"
-      params.set("departure_time", String(Math.floor(Date.now() / 1000)));
+      body.departureTime = new Date(departure).toISOString();
     }
 
-    const res = await fetch(`https://maps.googleapis.com/maps/api/directions/json?${params}`);
+    const res = await fetch("https://routes.googleapis.com/directions/v2:computeRoutes", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": "routes.duration,routes.distanceMeters,routes.legs.duration,routes.legs.distanceMeters,routes.legs.steps.transitDetails,routes.legs.steps.travelMode,routes.legs.steps.startLocation,routes.legs.steps.endLocation,routes.legs.steps.localizedValues,routes.localizedValues",
+      },
+      body: JSON.stringify(body),
+    });
+
     const data = await res.json();
 
-    if (data.status !== "OK") {
-      return new Response(JSON.stringify({ error: data.status, message: data.error_message || "No transit routes found" }), {
+    if (data.error) {
+      return new Response(JSON.stringify({ error: data.error.message || "Routes API error", status: data.error.status }), {
+        status: 404, headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (!data.routes || data.routes.length === 0) {
+      return new Response(JSON.stringify({ error: "No transit routes found" }), {
         status: 404, headers: { "Content-Type": "application/json" },
       });
     }
 
     // Parse routes into a clean format
     const routes = data.routes.map(route => {
-      const leg = route.legs[0];
-      const steps = leg.steps.map(step => {
+      const leg = route.legs?.[0];
+      const durationSec = parseInt(route.duration?.replace("s", "") || "0");
+      const steps = (leg?.steps || []).map(step => {
         const base = {
-          mode: step.travel_mode, // WALKING or TRANSIT
-          distance: step.distance?.text || "",
-          duration: step.duration?.text || "",
-          durationSec: step.duration?.value || 0,
-          instructions: step.html_instructions || "",
+          mode: step.travelMode || "WALKING",
+          distance: step.localizedValues?.distance?.text || "",
+          duration: step.localizedValues?.staticDuration?.text || "",
         };
-        if (step.travel_mode === "TRANSIT") {
-          const td = step.transit_details;
+        if (step.travelMode === "TRANSIT" && step.transitDetails) {
+          const td = step.transitDetails;
           base.transit = {
-            line: td.line?.short_name || td.line?.name || "",
-            lineName: td.line?.name || "",
-            vehicle: td.line?.vehicle?.type || "",
-            vehicleName: td.line?.vehicle?.name || "",
-            color: td.line?.color || "",
-            textColor: td.line?.text_color || "",
-            departureStop: td.departure_stop?.name || "",
-            arrivalStop: td.arrival_stop?.name || "",
-            departureTime: td.departure_time?.text || "",
-            arrivalTime: td.arrival_time?.text || "",
-            numStops: td.num_stops || 0,
+            line: td.transitLine?.nameShort || td.transitLine?.name || "",
+            lineName: td.transitLine?.name || "",
+            vehicle: td.transitLine?.vehicle?.type || "",
+            vehicleName: td.transitLine?.vehicle?.name?.text || "",
+            color: td.transitLine?.color || "",
+            textColor: td.transitLine?.textColor || "",
+            departureStop: td.stopDetails?.departureStop?.name || "",
+            arrivalStop: td.stopDetails?.arrivalStop?.name || "",
+            departureTime: td.localizedValues?.departureTime?.time?.text || td.stopDetails?.departureTime || "",
+            arrivalTime: td.localizedValues?.arrivalTime?.time?.text || td.stopDetails?.arrivalTime || "",
+            numStops: td.stopCount || 0,
             headsign: td.headsign || "",
           };
         }
@@ -74,12 +85,9 @@ export async function onRequestGet(context) {
       });
 
       return {
-        summary: route.summary || "",
-        duration: leg.duration?.text || "",
-        durationSec: leg.duration?.value || 0,
-        distance: leg.distance?.text || "",
-        departureTime: leg.departure_time?.text || "",
-        arrivalTime: leg.arrival_time?.text || "",
+        duration: route.localizedValues?.duration?.text || `${Math.round(durationSec / 60)} min`,
+        durationSec,
+        distance: route.localizedValues?.distance?.text || `${Math.round((route.distanceMeters || 0) / 1000)} km`,
         steps,
       };
     });
