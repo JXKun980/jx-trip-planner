@@ -2046,20 +2046,26 @@
       }, [daysWithBattery.length]);
 
       // Scroll-based day detection for sticky map
-      const observerKey = daysWithBattery.map(d => d.day).join("|");
       React.useEffect(() => {
-        const observers = [];
-        dayRefs.current.forEach((ref, i) => {
-          if (!ref) return;
-          const observer = new IntersectionObserver(
-            ([entry]) => { if (entry.isIntersecting) setActiveMapDay(i); },
-            { rootMargin: "-45% 0px -45% 0px", threshold: 0.01 }
-          );
-          observer.observe(ref);
-          observers.push(observer);
-        });
-        return () => observers.forEach(o => o.disconnect());
-      }, [observerKey]);
+        const handleScroll = () => {
+          const midY = window.innerHeight * 0.5;
+          let closest = 0;
+          let closestDist = Infinity;
+          dayRefs.current.forEach((ref, i) => {
+            if (!ref) return;
+            const rect = ref.getBoundingClientRect();
+            const dist = Math.abs(rect.top - midY);
+            if (rect.top <= midY && dist < closestDist) {
+              closestDist = dist;
+              closest = i;
+            }
+          });
+          setActiveMapDay(prev => prev !== closest ? closest : prev);
+        };
+        window.addEventListener("scroll", handleScroll, { passive: true });
+        handleScroll(); // initial check
+        return () => window.removeEventListener("scroll", handleScroll);
+      }, [daysWithBattery.length]);
 
       const onChange = (id, val) => setDays(p=>p.map(d=>({...d,stops:d.stops.map(s=>s.id===id?{...s,stay:val}:s)})));
       const onStartTime = (i, h, m) => setStartTimes(p=>{const n=[...p];n[i]={h:h??n[i]?.h??8,m:m??n[i]?.m??0};return n;});
