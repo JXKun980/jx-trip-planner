@@ -175,6 +175,7 @@
     ];
 
     // ── Helpers ──
+    function clampPct(v) { return Math.max(0, Math.min(100, Number(v) || 0)); }
     function fmt(m) { const h=Math.floor(m/60), r=m%60; return h===0?`${r}min`:r===0?`${h}h`:`${h}h ${r}min`; }
     function timeOfDay(h, addM) { const t=h*60+addM, hr=Math.floor(t/60)%24, mn=t%60, ap=hr>=12?"PM":"AM", h12=hr===0?12:hr>12?hr-12:hr; return `${h12}:${String(mn).padStart(2,'0')} ${ap}`; }
     function mapEmbed(stop) {
@@ -417,7 +418,10 @@
                   )}
                   {mode === "drive" && (
                     <div className="flex items-center gap-2 text-[10px]">
-                      <button onClick={() => onEditField(stop.id, { evLinked: !(stop.evLinked !== false) })}
+                      <button onClick={() => onEditField(stop.id, stop.evLinked !== false
+                          ? { evLinked: false, evStartBattery: Math.round(battFrom) }
+                          : { evLinked: true, evStartBattery: undefined }
+                        )}
                         className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors ${stop.evLinked !== false ? "text-blue-400 bg-blue-500/10" : "text-gray-500 bg-[#1a1a1a]"}`}
                         title={stop.evLinked !== false ? "Linked to previous EV battery — click to unlink" : "Unlinked — click to link to previous EV"}>
                         {stop.evLinked !== false ? "🔗" : "🔓"}
@@ -1104,16 +1108,17 @@
       // Update route when active day changes
       React.useEffect(() => {
         const map = mapInstance.current;
-        if (!map || !days[activeDayIdx]) return;
-        const day = days[activeDayIdx];
-        const stops = day.stops.filter(s => s.lat && s.lng);
-        if (stops.length < 2) return;
+        if (!map) return;
 
-        // Remove previous route
+        // Always clear previous route first
         if (routingControl.current) {
           try { map.removeControl(routingControl.current); } catch {}
           routingControl.current = null;
         }
+
+        const day = days[activeDayIdx];
+        const stops = day?.stops?.filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lng)) || [];
+        if (!day || stops.length < 2 || !L?.Routing?.control) return;
 
         // Create waypoints
         const waypoints = stops.map(s => L.latLng(s.lat, s.lng));
@@ -1165,28 +1170,26 @@
       const [open, setOpen] = useState(true);
       const st = dayStats(day.stops);
       const levels = useMemo(() => {
-        let lastEvBatt = day.startBattery, el=0, out=[];
+        let lastEvBatt = clampPct(day.startBattery), el=0, out=[];
         day.stops.forEach((s, i) => {
           const mode = s.travelMode || "drive";
           const isFirst = i === 0;
-          // Determine EV start battery for this segment
           let evStart = lastEvBatt;
-          if (!isFirst && mode === "drive" && s.evLinked === false && s.evStartBattery != null) {
-            evStart = s.evStartBattery;
+          if (!isFirst && mode === "drive" && s.evLinked === false) {
+            evStart = clampPct(s.evStartBattery ?? 100);
           }
-          // Calculate arrival battery
           let arr;
           if (mode === "drive") {
-            arr = evStart - s.batt;
+            arr = clampPct(evStart - (Number(s.batt) || 0));
             lastEvBatt = arr;
           } else {
-            arr = lastEvBatt; // non-drive: EV battery unchanged
+            arr = lastEvBatt;
           }
           el += s.drive;
           const t = timeOfDay(startH, startM + el);
           let dep = arr;
           if (s.type === "charge" && s.charge) {
-            dep = calcChargedSOC(arr, s.charge.kw, s.stay);
+            dep = clampPct(calcChargedSOC(arr, s.charge.kw, s.stay));
             lastEvBatt = dep;
           }
           out.push({arr, dep, t, evStart}); el += s.stay;
@@ -1421,15 +1424,15 @@
 
     // Simulate a full day and return the final battery %
     function simulateDayEndBattery(day) {
-      let b = day.startBattery;
+      let b = clampPct(day.startBattery);
       day.stops.forEach((s, i) => {
         const mode = s.travelMode || "drive";
         if (mode === "drive") {
-          const evStart = (i > 0 && s.evLinked === false && s.evStartBattery != null) ? s.evStartBattery : b;
-          b = evStart - s.batt;
+          const evStart = (i > 0 && s.evLinked === false) ? clampPct(s.evStartBattery ?? 100) : b;
+          b = clampPct(evStart - (Number(s.batt) || 0));
         }
         if (s.type === "charge" && s.charge) {
-          b = calcChargedSOC(b, s.charge.kw, s.stay);
+          b = clampPct(calcChargedSOC(b, s.charge.kw, s.stay));
         }
       });
       return b;
@@ -1954,20 +1957,26 @@
       React.useEffect(() => { localStorage.setItem("heroSubtitle", heroSubtitle); }, [heroSubtitle]);
       React.useEffect(() => { localStorage.setItem("heroSnippet", heroSnippet); }, [heroSnippet]);
 
+      // Clamp activeMapDay when days change
+      React.useEffect(() => {
+        setActiveMapDay(i => Math.max(0, Math.min(i, daysWithBattery.length - 1)));
+      }, [daysWithBattery.length]);
+
       // Scroll-based day detection for sticky map
+      const observerKey = daysWithBattery.map(d => d.day).join("|");
       React.useEffect(() => {
         const observers = [];
         dayRefs.current.forEach((ref, i) => {
           if (!ref) return;
           const observer = new IntersectionObserver(
             ([entry]) => { if (entry.isIntersecting) setActiveMapDay(i); },
-            { rootMargin: "-50% 0px -50% 0px" } // triggers when day banner crosses middle of viewport
+            { rootMargin: "-45% 0px -45% 0px", threshold: 0.01 }
           );
           observer.observe(ref);
           observers.push(observer);
         });
         return () => observers.forEach(o => o.disconnect());
-      }, [daysWithBattery.length]);
+      }, [observerKey]);
 
       // Auto-scroll when dragging near viewport edges
       // (Chrome/Edge block scroll wheel during HTML5 drag, so edge-scroll is the only way)
@@ -2557,13 +2566,16 @@
               <h3 className="text-base font-bold text-white mb-3">⚡ Charging Strategy Summary</h3>
               <div className="space-y-2">
                 {daysWithBattery.flatMap(day => {
-                  // simulate battery through the day to get arrival SOC at each charger
-                  let b = day.startBattery;
-                  return day.stops.map(s => {
-                    b -= s.batt;
+                  let b = clampPct(day.startBattery);
+                  return day.stops.map((s, i) => {
+                    const mode = s.travelMode || "drive";
+                    if (mode === "drive") {
+                      const evStart = (i > 0 && s.evLinked === false) ? clampPct(s.evStartBattery ?? 100) : b;
+                      b = clampPct(evStart - (Number(s.batt) || 0));
+                    }
                     const arr = b;
                     if (s.type==="charge" && s.charge) {
-                      const dep = calcChargedSOC(arr, s.charge.kw, s.stay);
+                      const dep = clampPct(calcChargedSOC(arr, s.charge.kw, s.stay));
                       b = dep;
                       return (
                         <div key={s.id} className="flex items-center justify-between bg-[#0a0a0a] rounded-lg p-2.5 border border-green-500/10">
