@@ -1957,26 +1957,7 @@
       React.useEffect(() => { localStorage.setItem("heroSubtitle", heroSubtitle); }, [heroSubtitle]);
       React.useEffect(() => { localStorage.setItem("heroSnippet", heroSnippet); }, [heroSnippet]);
 
-      // Clamp activeMapDay when days change
-      React.useEffect(() => {
-        setActiveMapDay(i => Math.max(0, Math.min(i, daysWithBattery.length - 1)));
-      }, [daysWithBattery.length]);
 
-      // Scroll-based day detection for sticky map
-      const observerKey = daysWithBattery.map(d => d.day).join("|");
-      React.useEffect(() => {
-        const observers = [];
-        dayRefs.current.forEach((ref, i) => {
-          if (!ref) return;
-          const observer = new IntersectionObserver(
-            ([entry]) => { if (entry.isIntersecting) setActiveMapDay(i); },
-            { rootMargin: "-45% 0px -45% 0px", threshold: 0.01 }
-          );
-          observer.observe(ref);
-          observers.push(observer);
-        });
-        return () => observers.forEach(o => o.disconnect());
-      }, [observerKey]);
 
       // Auto-scroll when dragging near viewport edges
       // (Chrome/Edge block scroll wheel during HTML5 drag, so edge-scroll is the only way)
@@ -2058,6 +2039,27 @@
         }
         return result;
       }, [days, homeBattery]);
+
+      // Clamp activeMapDay when days change
+      React.useEffect(() => {
+        setActiveMapDay(i => Math.max(0, Math.min(i, daysWithBattery.length - 1)));
+      }, [daysWithBattery.length]);
+
+      // Scroll-based day detection for sticky map
+      const observerKey = daysWithBattery.map(d => d.day).join("|");
+      React.useEffect(() => {
+        const observers = [];
+        dayRefs.current.forEach((ref, i) => {
+          if (!ref) return;
+          const observer = new IntersectionObserver(
+            ([entry]) => { if (entry.isIntersecting) setActiveMapDay(i); },
+            { rootMargin: "-45% 0px -45% 0px", threshold: 0.01 }
+          );
+          observer.observe(ref);
+          observers.push(observer);
+        });
+        return () => observers.forEach(o => o.disconnect());
+      }, [observerKey]);
 
       const onChange = (id, val) => setDays(p=>p.map(d=>({...d,stops:d.stops.map(s=>s.id===id?{...s,stay:val}:s)})));
       const onStartTime = (i, h, m) => setStartTimes(p=>{const n=[...p];n[i]={h:h??n[i]?.h??8,m:m??n[i]?.m??0};return n;});
