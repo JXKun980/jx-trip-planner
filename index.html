@@ -16,6 +16,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+  <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
   <script>
     tailwind.config = {
       theme: {
@@ -50,6 +52,8 @@
     @keyframes splash-bar { 0% { width: 0; } 100% { width: 200px; } }
     @keyframes splash-dots { 0%,20% { opacity: 0.2; } 50% { opacity: 1; } 80%,100% { opacity: 0.2; } }
     @keyframes splash-ring { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .leaflet-routing-container { display: none !important; }
+    .sticky-map { position: sticky; top: 44px; z-index: 20; }
     input[type=range] { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 9999px; cursor: pointer; }
     input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #fff; cursor: pointer; }
     input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #fff; cursor: pointer; border: none; }
@@ -408,6 +412,23 @@
                       {mode === "drive" && (
                         <label className="flex items-center gap-1 text-gray-500">Batt% <input type="number" value={stop.batt} onChange={e=>onEditField(stop.id,{batt:+e.target.value, _routeSource:undefined})}
                           className="w-12 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1 py-0.5 text-white" /></label>
+                      )}
+                    </div>
+                  )}
+                  {mode === "drive" && (
+                    <div className="flex items-center gap-2 text-[10px]">
+                      <button onClick={() => onEditField(stop.id, { evLinked: !(stop.evLinked !== false) })}
+                        className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors ${stop.evLinked !== false ? "text-blue-400 bg-blue-500/10" : "text-gray-500 bg-[#1a1a1a]"}`}
+                        title={stop.evLinked !== false ? "Linked to previous EV battery — click to unlink" : "Unlinked — click to link to previous EV"}>
+                        {stop.evLinked !== false ? "🔗" : "🔓"}
+                      </button>
+                      <span className="text-gray-500">Start:</span>
+                      {stop.evLinked !== false ? (
+                        <span className="text-gray-400 font-medium">{Math.round(battFrom)}%</span>
+                      ) : (
+                        <input type="number" min={0} max={100} value={stop.evStartBattery ?? 100}
+                          onChange={e => onEditField(stop.id, { evStartBattery: +e.target.value })}
+                          className="w-12 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1 py-0.5 text-white" />
                       )}
                     </div>
                   )}
@@ -1062,27 +1083,117 @@
 
     const DAY_COLORS = ["#3b82f6","#14b8a6","#a855f7","#f59e0b","#ef4444","#ec4899","#8b5cf6","#06b6d4"];
 
+    // ── Sticky Route Map (Leaflet + LRM) ──
+    function StickyRouteMap({ days, activeDayIdx }) {
+      const mapRef = React.useRef(null);
+      const mapInstance = React.useRef(null);
+      const routingControl = React.useRef(null);
+
+      // Initialize map once
+      React.useEffect(() => {
+        if (!mapRef.current || mapInstance.current) return;
+        const map = L.map(mapRef.current, { zoomControl: true, attributionControl: false }).setView([-37.8, 144.9], 8);
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: '© OpenStreetMap',
+        }).addTo(map);
+        mapInstance.current = map;
+        setTimeout(() => map.invalidateSize(), 200);
+        return () => { map.remove(); mapInstance.current = null; };
+      }, []);
+
+      // Update route when active day changes
+      React.useEffect(() => {
+        const map = mapInstance.current;
+        if (!map || !days[activeDayIdx]) return;
+        const day = days[activeDayIdx];
+        const stops = day.stops.filter(s => s.lat && s.lng);
+        if (stops.length < 2) return;
+
+        // Remove previous route
+        if (routingControl.current) {
+          try { map.removeControl(routingControl.current); } catch {}
+          routingControl.current = null;
+        }
+
+        // Create waypoints
+        const waypoints = stops.map(s => L.latLng(s.lat, s.lng));
+
+        // Add routing
+        const control = L.Routing.control({
+          waypoints,
+          routeWhileDragging: false,
+          draggableWaypoints: false,
+          addWaypoints: false,
+          lineOptions: { styles: [{ color: day.color || "#3b82f6", weight: 4, opacity: 0.8 }] },
+          createMarker: (i, wp) => {
+            const stop = stops[i];
+            return L.marker(wp.latLng, {
+              icon: L.divIcon({
+                className: "",
+                html: `<div style="background:${day.color || "#3b82f6"};color:#fff;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.4)">${stop.emoji || (i + 1)}</div>`,
+                iconSize: [24, 24],
+                iconAnchor: [12, 12],
+              }),
+            }).bindTooltip(stop.name, { direction: "top", offset: [0, -14] });
+          },
+          show: false,
+          fitSelectedRoutes: true,
+        }).addTo(map);
+
+        routingControl.current = control;
+
+        // Invalidate size in case sticky changed layout
+        setTimeout(() => map.invalidateSize(), 100);
+      }, [activeDayIdx, days]);
+
+      return (
+        <div className="sticky-map border-b border-[#1a1a1a]">
+          <div className="relative">
+            <div ref={mapRef} style={{height:"300px",width:"100%"}} />
+            {days[activeDayIdx] && (
+              <div className="absolute top-3 right-3 z-[1000] bg-[#0a0a0a]/90 backdrop-blur-sm rounded-lg px-3 py-1.5 border border-[#2a2a2a]">
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full mr-1.5" style={{background:days[activeDayIdx].color,color:"#000"}}>DAY {days[activeDayIdx].day}</span>
+                <span className="text-[11px] text-gray-300">{days[activeDayIdx].title}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
     function DaySection({day, onChange, startH, startM, onStartTime, homeBattery, onHomeBatteryChange, editMode, onDelete, onEditField, onAddStop, onEditDay, onDeleteDay, onDayDragStart, onDayDragEnd, recalcStopIds, setRecalcStopIds}) {
       const [open, setOpen] = useState(true);
       const st = dayStats(day.stops);
       const levels = useMemo(() => {
-        let b = day.startBattery, el=0, out=[];
-        day.stops.forEach(s => {
-          b -= s.batt; el += s.drive;
-          const arr=b, t=timeOfDay(startH, startM + el);
-          let dep=arr;
-          if(s.type==="charge" && s.charge) {
-            dep = calcChargedSOC(arr, s.charge.kw, s.stay);
-            b = dep;
+        let lastEvBatt = day.startBattery, el=0, out=[];
+        day.stops.forEach((s, i) => {
+          const mode = s.travelMode || "drive";
+          const isFirst = i === 0;
+          // Determine EV start battery for this segment
+          let evStart = lastEvBatt;
+          if (!isFirst && mode === "drive" && s.evLinked === false && s.evStartBattery != null) {
+            evStart = s.evStartBattery;
           }
-          out.push({arr,dep,t}); el+=s.stay;
+          // Calculate arrival battery
+          let arr;
+          if (mode === "drive") {
+            arr = evStart - s.batt;
+            lastEvBatt = arr;
+          } else {
+            arr = lastEvBatt; // non-drive: EV battery unchanged
+          }
+          el += s.drive;
+          const t = timeOfDay(startH, startM + el);
+          let dep = arr;
+          if (s.type === "charge" && s.charge) {
+            dep = calcChargedSOC(arr, s.charge.kw, s.stay);
+            lastEvBatt = dep;
+          }
+          out.push({arr, dep, t, evStart}); el += s.stay;
         });
         return out;
       }, [day, startH, startM]);
       const endT = useMemo(()=>timeOfDay(startH, startM + day.stops.reduce((s,x)=>s+x.drive+x.stay,0)), [day,startH,startM]);
-      // Key for route map iframe to force re-render on stop changes
-      const routeKey = useMemo(() => day.stops.map(s => s.mq || s.id).join("|"), [day.stops]);
-
       // Weather data for the day and all stops — re-fetch when locations change
       const [weatherData, setWeatherData] = useState(null);
       const [weatherLoading, setWeatherLoading] = useState(true);
@@ -1250,15 +1361,6 @@
               ))}
               {day.stops.length > 0 && <WeatherBadge dayWeather={weatherData?.day} loading={weatherLoading} onRefresh={fetchWeather} />}
             </div>
-            {/* Day route map inside banner */}
-            {day.stops.length > 0 && (
-              <div className="-mx-5 mt-4 overflow-hidden" style={{height:"180px"}} onClick={e=>e.stopPropagation()}>
-                <iframe key={routeKey}
-                  src={`https://maps.google.com/maps?saddr=${day.stops[0].mq}&daddr=${day.stops.slice(1).map(s=>s.mq).join("+to:")}&output=embed`}
-                  className="w-full h-full" style={{border:0,pointerEvents:"auto"}} loading="lazy" title={`Day ${day.day} route`}
-                  allowFullScreen />
-              </div>
-            )}
             {/* Expand/collapse strip */}
             <div className={`-mx-5 -mb-5 ${day.stops.length === 0 ? "mt-4" : ""} rounded-b-2xl py-1.5 flex items-center justify-center gap-2 transition-all ${
               open ? "bg-white/5" : "bg-black/20 hover:bg-black/30"
@@ -1299,7 +1401,7 @@
               <React.Fragment key={s.id}>
                 {dragId && <DropZone idx={i} />}
                 {i > 0 && !dragId && (
-                  <TravelSegment stop={s} battFrom={levels[i-1].dep} battTo={levels[i].arr} color={day.color}
+                  <TravelSegment stop={s} battFrom={levels[i].evStart} battTo={levels[i].arr} color={day.color}
                     routeLoading={recalcStopIds.has(s.id)} editMode={editMode} onEditField={onEditField} />
                 )}
                 <div className={dragId === s.id ? "opacity-30" : ""}>
@@ -1320,12 +1422,16 @@
     // Simulate a full day and return the final battery %
     function simulateDayEndBattery(day) {
       let b = day.startBattery;
-      for (const s of day.stops) {
-        b -= s.batt;
+      day.stops.forEach((s, i) => {
+        const mode = s.travelMode || "drive";
+        if (mode === "drive") {
+          const evStart = (i > 0 && s.evLinked === false && s.evStartBattery != null) ? s.evStartBattery : b;
+          b = evStart - s.batt;
+        }
         if (s.type === "charge" && s.charge) {
           b = calcChargedSOC(b, s.charge.kw, s.stay);
         }
-      }
+      });
       return b;
     }
 
@@ -1570,6 +1676,8 @@
       const [showSaveConfirm, setShowSaveConfirm] = useState(false);
       const [restoreConfirmId, setRestoreConfirmId] = useState(null);
       const [navOpen, setNavOpen] = useState(false);
+      const [activeMapDay, setActiveMapDay] = useState(0);
+      const dayRefs = React.useRef([]);
       const [activeTripId, setActiveTripId] = useState(() => localStorage.getItem("activeTripId") || "trip-default");
       const [tripsList, setTripsList] = useState([]);
 
@@ -1845,6 +1953,21 @@
       React.useEffect(() => { localStorage.setItem("heroTitle", heroTitle); }, [heroTitle]);
       React.useEffect(() => { localStorage.setItem("heroSubtitle", heroSubtitle); }, [heroSubtitle]);
       React.useEffect(() => { localStorage.setItem("heroSnippet", heroSnippet); }, [heroSnippet]);
+
+      // Scroll-based day detection for sticky map
+      React.useEffect(() => {
+        const observers = [];
+        dayRefs.current.forEach((ref, i) => {
+          if (!ref) return;
+          const observer = new IntersectionObserver(
+            ([entry]) => { if (entry.isIntersecting) setActiveMapDay(i); },
+            { rootMargin: "-50% 0px -50% 0px" } // triggers when day banner crosses middle of viewport
+          );
+          observer.observe(ref);
+          observers.push(observer);
+        });
+        return () => observers.forEach(o => o.disconnect());
+      }, [daysWithBattery.length]);
 
       // Auto-scroll when dragging near viewport edges
       // (Chrome/Edge block scroll wheel during HTML5 drag, so edge-scroll is the only way)
@@ -2379,6 +2502,11 @@
             </div>
           </header>
 
+          {/* Sticky Route Map */}
+          {daysWithBattery.length > 0 && (
+            <StickyRouteMap days={daysWithBattery} activeDayIdx={activeMapDay} />
+          )}
+
           {/* Days */}
           <div className="max-w-4xl mx-auto px-4 py-4">
             {daysWithBattery.map((d,i)=>(
@@ -2395,7 +2523,7 @@
                     </div>
                   </div>
                 )}
-                <div className={dragDayNum === d.day ? "opacity-30" : ""}>
+                <div ref={el => dayRefs.current[i] = el} className={dragDayNum === d.day ? "opacity-30" : ""}>
                   <DaySection day={d} onChange={onChange} startH={startTimes[i]?.h??8} startM={startTimes[i]?.m??0} onStartTime={(h,m)=>onStartTime(i,h,m)} homeBattery={homeBattery} onHomeBatteryChange={setHomeBattery} editMode={editMode} onDelete={onDelete} onEditField={onEditField} onAddStop={onAddStop} onEditDay={onEditDay} onDeleteDay={onDeleteDay} recalcStopIds={recalcStopIds} setRecalcStopIds={setRecalcStopIds}
                     onDayDragStart={num => { requestAnimationFrame(() => setDragDayNum(num)); }}
                     onDayDragEnd={() => { setDragDayNum(null); setHoverDayIdx(null); }} />
