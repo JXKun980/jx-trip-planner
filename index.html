@@ -52,8 +52,12 @@
     @keyframes splash-bar { 0% { width: 0; } 100% { width: 200px; } }
     @keyframes splash-dots { 0%,20% { opacity: 0.2; } 50% { opacity: 1; } 80%,100% { opacity: 0.2; } }
     @keyframes splash-ring { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    @keyframes toast-in { 0% { transform: translateY(100%); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
+    @keyframes toast-out { 0% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(100%); opacity: 0; } }
+    .toast-enter { animation: toast-in 0.25s ease-out forwards; }
+    .toast-exit { animation: toast-out 0.3s ease-in forwards; }
     .leaflet-routing-container { display: none !important; }
-    .sticky-map { position: sticky; top: 44px; z-index: 20; }
+    .sticky-map { position: sticky; z-index: 20; }
     input[type=range] { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 9999px; cursor: pointer; }
     input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #fff; cursor: pointer; }
     input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #fff; cursor: pointer; border: none; }
@@ -90,29 +94,36 @@
     ];
 
     // Simulate charging: given arrival SOC%, charger max kW, and minutes → departure SOC%
-    function calcChargedSOC(arrivalPct, chargerKW, minutes) {
-      let soc = arrivalPct; // current SOC in %
-      const stepMin = 0.5;  // simulate in 30-second steps for accuracy
+    function calcChargedSOC(arrivalPct, chargerKW, minutes, vehicle) {
+      let soc = arrivalPct;
+      const stepMin = 0.5;
       let remaining = minutes;
+      const battKWh = vehicle?.batteryKWh || BATTERY_KWH;
+      const curve = vehicle?.chargeCurve || CHARGE_CURVE;
 
       while (remaining > 0 && soc < 100) {
         const step = Math.min(stepMin, remaining);
-        // find the car's charge rate at current SOC
-        let carRate = 6; // fallback for >95%
-        for (const [lo, hi, kw] of CHARGE_CURVE) {
+        let carRate = 6;
+        for (const [lo, hi, kw] of curve) {
           if (soc >= lo && soc < hi) { carRate = kw; break; }
         }
-        // effective rate = min(car curve, charger max output)
         const effectiveKW = Math.min(carRate, chargerKW);
-        // energy added in this time step (kWh)
         const energyAdded = effectiveKW * (step / 60);
-        // convert to SOC %
-        const socAdded = (energyAdded / BATTERY_KWH) * 100;
+        const socAdded = (energyAdded / battKWh) * 100;
         soc = Math.min(100, soc + socAdded);
         remaining -= step;
       }
-      return Math.round(soc * 10) / 10; // round to 1 decimal
+      return Math.round(soc * 10) / 10;
     }
+
+    const DEFAULT_CHARGE_CURVE = CHARGE_CURVE;
+    const DEFAULT_CONSUMPTION_AT_SPEED = consumptionAtSpeed;
+
+    const DEFAULT_VEHICLE = {
+      id: "v1", name: "Tesla Model 3", registration: "", color: "#3b82f6",
+      batteryKWh: 60, chargeCurve: CHARGE_CURVE,
+      consumptionRates: { city: 12, suburban: 13, country: 14.5, highway: 16, fastHighway: 18, motorway: 20 },
+    };
 
     const initialDays = [
       {
@@ -371,103 +382,567 @@
       return { type: "Tesla Supercharger V3", stalls: 6, kw: 250 };
     }
 
+    // ── Travel mode SVG icons ──
+    const TravelIcon = ({id, className = "w-3.5 h-3.5"}) => {
+      const icons = {
+        drive: <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="6.5" /><path strokeLinecap="round" d="M12 5.5V8M12 16v2.5M5.5 12H8M16 12h2.5" /><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" /></svg>,
+        walk: <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="4" r="2" /><path strokeLinecap="round" strokeLinejoin="round" d="M14 9l-2 4-3 1.5M9.5 14.5L8 20M14 13l1.5 7M10 9l-3 3" /></svg>,
+        transit: <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><rect x="6" y="3" width="12" height="14" rx="2" /><path strokeLinecap="round" strokeLinejoin="round" d="M6 10h12M9 17l-2 3M15 17l2 3" /><circle cx="9" cy="13.5" r="1" fill="currentColor" /><circle cx="15" cy="13.5" r="1" fill="currentColor" /></svg>,
+        flight: <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 00-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" fill="currentColor" stroke="none" /></svg>,
+      };
+      return icons[id] || icons.drive;
+    };
+
     // ── Travel Segment (between stops, narrower than stop cards) ──
     const TRAVEL_MODES = [
-      { id: "drive", icon: "🚗", label: "Drive" },
-      { id: "walk", icon: "🚶", label: "Walk" },
-      { id: "transit", icon: "🚌", label: "Transit" },
+      { id: "drive", label: "Drive" },
+      { id: "walk", label: "Walk" },
+      { id: "transit", label: "Transit" },
+      { id: "flight", label: "Flight" },
     ];
 
-    function TravelSegment({ stop, battFrom, battTo, color, routeLoading, editMode, onEditField }) {
+    function TravelSegment({ stop, prevStop, battFrom, battTo, color, routeLoading, editMode, onEditField, onDelete, vehicles, onUpdateVehicles }) {
       if (!stop || (stop.dist === 0 && stop.drive === 0 && !editMode)) return null;
       const mode = stop.travelMode || "drive";
       const modeInfo = TRAVEL_MODES.find(m => m.id === mode) || TRAVEL_MODES[0];
+      const [showEditModal, setShowEditModal] = useState(false);
+      const vehicle = vehicles?.find(v => v.id === stop.vehicleId) || vehicles?.[0];
 
       return (
-        <div className="flex gap-0 -mt-2 mb-3">
+        <div className="flex gap-0">
           {/* Left: timeline connector */}
           <div className="w-20 shrink-0 flex flex-col items-center">
             <div className="w-[2px] flex-1" style={{background:`${color}22`}} />
           </div>
           {/* Right: narrower transport card, centered */}
           <div className="flex-1 min-w-0 flex flex-col items-center px-4 md:px-12">
-            <div className="w-full max-w-md bg-[#0d0d0d]/80 border border-[#222] rounded-lg overflow-hidden">
-              {editMode ? (
-                <div className="px-3 py-2 space-y-1.5">
-                  <div className="flex items-center gap-1">
-                    {TRAVEL_MODES.map(m => (
-                      <button key={m.id} onClick={() => onEditField(stop.id, { travelMode: m.id })}
-                        className={`px-2 py-0.5 rounded text-[10px] transition-colors ${mode === m.id ? "bg-white/10 text-white font-medium" : "text-gray-600 hover:text-gray-400"}`}>
-                        {m.icon} {m.label}
-                      </button>
-                    ))}
-                  </div>
-                  {routeLoading ? (
-                    <div className="flex items-center gap-2 text-[10px] text-gray-500"><InlineSpinner /> Calculating...</div>
-                  ) : (
-                    <div className="flex gap-2 flex-wrap text-[10px]">
-                      <label className="flex items-center gap-1 text-gray-500">Dist(km) <input type="number" value={stop.dist} onChange={e=>onEditField(stop.id,{dist:+e.target.value, _routeSource:undefined})}
-                        className="w-14 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1 py-0.5 text-white" /></label>
-                      <label className="flex items-center gap-1 text-gray-500">{mode === "drive" ? "Drive" : "Time"}(min) <input type="number" value={stop.drive} onChange={e=>onEditField(stop.id,{drive:+e.target.value, _routeSource:undefined})}
-                        className="w-14 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1 py-0.5 text-white" /></label>
-                      {mode === "drive" && (
-                        <label className="flex items-center gap-1 text-gray-500">Batt% <input type="number" value={stop.batt} onChange={e=>onEditField(stop.id,{batt:+e.target.value, _routeSource:undefined})}
-                          className="w-12 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1 py-0.5 text-white" /></label>
-                      )}
-                    </div>
-                  )}
-                  {mode === "drive" && (
-                    <div className="flex items-center gap-2 text-[10px]">
-                      <button onClick={() => onEditField(stop.id, stop.evLinked !== false
-                          ? { evLinked: false, evStartBattery: Math.round(battFrom) }
-                          : { evLinked: true, evStartBattery: undefined }
-                        )}
-                        className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors ${stop.evLinked !== false ? "text-blue-400 bg-blue-500/10" : "text-gray-500 bg-[#1a1a1a]"}`}
-                        title={stop.evLinked !== false ? "Linked to previous EV battery — click to unlink" : "Unlinked — click to link to previous EV"}>
-                        {stop.evLinked !== false ? "🔗" : "🔓"}
-                      </button>
-                      <span className="text-gray-500">Start:</span>
-                      {stop.evLinked !== false ? (
-                        <span className="text-gray-400 font-medium">{Math.round(battFrom)}%</span>
+            <div className="w-full bg-[#0d0d0d]/80 border border-[#222] rounded-lg overflow-hidden" style={{maxWidth:"30rem"}}>
+              <div className="flex">
+                {/* Edit mode: pencil zone */}
+                {editMode && (
+                  <div className="flex-1 min-w-0 cursor-pointer hover:bg-white/[0.03] transition-colors group/edit"
+                    onClick={() => setShowEditModal(true)}>
+                    <div className="px-3 py-1.5 flex items-center gap-2.5 text-[10px]">
+                      {routeLoading ? (
+                        <span className="text-gray-500 flex items-center gap-1.5"><InlineSpinner /> Calculating...</span>
                       ) : (
-                        <input type="number" min={0} max={100} value={stop.evStartBattery ?? 100}
-                          onChange={e => onEditField(stop.id, { evStartBattery: +e.target.value })}
-                          className="w-12 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-1 py-0.5 text-white" />
-                      )}
-                    </div>
-                  )}
-                  {stop._routeSource && (
-                    <div className={`flex items-center gap-1.5 text-[9px] ${stop._routeSource === "osrm" ? "text-blue-400" : "text-yellow-500"}`}>
-                      {stop._routeSource === "osrm" ? "📡 OSRM" : "⚠️ Estimated"}
-                      <button onClick={()=>onEditField(stop.id,{_routeSource:undefined})} className="ml-auto text-gray-500 hover:text-white">✕</button>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="px-3 py-1.5 flex items-center gap-2.5 text-[10px]">
-                  {routeLoading ? (
-                    <span className="text-gray-500 flex items-center gap-1.5"><InlineSpinner /> Calculating...</span>
-                  ) : (
-                    <>
-                      <span className="text-gray-500">{modeInfo.icon}</span>
-                      <span className="text-gray-500 font-medium uppercase tracking-wider text-[9px]">{modeInfo.label}</span>
-                      <span className="text-gray-600">·</span>
-                      <span className="text-gray-400 font-medium">{stop.dist}km</span>
-                      <span className="text-gray-600">·</span>
-                      <span className="text-gray-400">{fmt(stop.drive)}</span>
-                      {mode === "drive" && stop.batt > 0 && (
                         <>
+                          <span className="text-gray-500 shrink-0"><TravelIcon id={mode} className="w-3 h-3" /></span>
+                          <span className="text-gray-500 font-medium uppercase tracking-wider text-[9px]">{modeInfo.label}</span>
                           <span className="text-gray-600">·</span>
-                          <BatteryGauge pct={battTo} />
-                          <span className="text-red-400/70 text-[9px]">(−{Math.round(battFrom - battTo)}%)</span>
+                          <span className="text-gray-400 font-medium">{stop.dist}km</span>
+                          <span className="text-gray-600">·</span>
+                          <span className="text-gray-400">{fmt(stop.drive)}</span>
+                          {mode === "drive" && stop.batt > 0 && (
+                            <>
+                              <span className="text-gray-600">·</span>
+                              <BatteryGauge pct={battTo} />
+                              <span className="text-red-400/70 text-[9px]">(−{Math.round(battFrom - battTo)}%)</span>
+                            </>
+                          )}
+                          {mode === "drive" && vehicle && (
+                            <span className="ml-auto text-[9px] px-1.5 py-0.5 rounded-full truncate max-w-[100px] shrink-0" style={{background: vehicle.color + "22", color: vehicle.color, border: `1px solid ${vehicle.color}44`}}>{vehicle.name}</span>
+                          )}
                         </>
                       )}
-                    </>
-                  )}
+                      <svg className="w-3 h-3 text-gray-600 group-hover/edit:text-blue-400 shrink-0 ml-auto transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                    </div>
+                  </div>
+                )}
+                {/* View mode */}
+                {!editMode && (
+                  <div className="flex-1 min-w-0">
+                    <div className="px-3 py-1.5 flex items-center gap-2.5 text-[10px]">
+                      {routeLoading ? (
+                        <span className="text-gray-500 flex items-center gap-1.5"><InlineSpinner /> Calculating...</span>
+                      ) : (
+                        <>
+                          <span className="text-gray-500 shrink-0"><TravelIcon id={mode} className="w-3 h-3" /></span>
+                          <span className="text-gray-500 font-medium uppercase tracking-wider text-[9px]">{modeInfo.label}</span>
+                          <span className="text-gray-600">·</span>
+                          <span className="text-gray-400 font-medium">{stop.dist}km</span>
+                          <span className="text-gray-600">·</span>
+                          <span className="text-gray-400">{fmt(stop.drive)}</span>
+                          {mode === "drive" && stop.batt > 0 && (
+                            <>
+                              <span className="text-gray-600">·</span>
+                              <BatteryGauge pct={battTo} />
+                              <span className="text-red-400/70 text-[9px]">(−{Math.round(battFrom - battTo)}%)</span>
+                            </>
+                          )}
+                          {mode === "drive" && vehicle && (
+                            <span className="ml-auto text-[9px] px-1.5 py-0.5 rounded-full truncate max-w-[100px] shrink-0" style={{background: vehicle.color + "22", color: vehicle.color, border: `1px solid ${vehicle.color}44`}}>{vehicle.name}</span>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {/* Delete zone */}
+                {editMode && onDelete && (
+                  <button onClick={(e) => { e.stopPropagation(); onDelete(stop.id); }}
+                    className="w-8 shrink-0 flex items-center justify-center border-l border-[#222] bg-[#0d0d0d] hover:bg-red-500/15 text-gray-600 hover:text-red-400 transition-colors"
+                    title="Remove segment">
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+          {showEditModal && (
+            <TravelEditModal stop={stop} prevStop={prevStop} battFrom={battFrom} onEditField={onEditField} vehicles={vehicles || []} onUpdateVehicles={onUpdateVehicles} onCancel={() => setShowEditModal(false)} />
+          )}
+        </div>
+      );
+    }
+
+    function TravelEditModal({ stop, prevStop, battFrom, onEditField, vehicles, onUpdateVehicles, onCancel }) {
+      const [mode, setMode] = useState(stop.travelMode || "drive");
+      const [dist, setDist] = useState(stop.dist || 0);
+      const [drive, setDrive] = useState(stop.drive || 0);
+      const [batt, setBatt] = useState(stop.batt || 0);
+      const [vehicleId, setVehicleId] = useState(stop.vehicleId || vehicles[0]?.id || "v1");
+      const [evLinked, setEvLinked] = useState(stop.evLinked !== false);
+      const [evStartBattery, setEvStartBattery] = useState(stop.evStartBattery ?? Math.round(battFrom));
+      const [showVehicleModal, setShowVehicleModal] = useState(false);
+      const [autoCalc, setAutoCalc] = useState(!!stop._routeSource);
+      const [calcLoading, setCalcLoading] = useState(false);
+
+      const canAutoCalc = prevStop?.lat && prevStop?.lng && stop?.lat && stop?.lng;
+
+      const runAutoCalc = async () => {
+        if (!canAutoCalc) return;
+        setCalcLoading(true);
+        const vehicle = vehicles.find(v => v.id === vehicleId) || vehicles[0];
+        const stats = await fetchDriveStats(prevStop.lat, prevStop.lng, stop.lat, stop.lng, vehicle);
+        setDist(stats.dist);
+        setDrive(stats.drive);
+        setBatt(stats.batt);
+        setCalcLoading(false);
+      };
+
+      const handleAutoCalcToggle = () => {
+        const next = !autoCalc;
+        setAutoCalc(next);
+        if (next && canAutoCalc) runAutoCalc();
+      };
+
+      const handleDone = () => {
+        const updates = { travelMode: mode, dist, drive: drive, vehicleId, _routeSource: autoCalc ? "osrm" : undefined };
+        if (mode === "drive") {
+          updates.batt = batt;
+          updates.evLinked = evLinked;
+          if (!evLinked) updates.evStartBattery = evStartBattery;
+          else updates.evStartBattery = undefined;
+        }
+        onEditField(stop.id, updates);
+        onCancel();
+      };
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onCancel}>
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <div className="relative bg-[#141414] border border-[#2a2a2a] rounded-2xl w-full max-w-md shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-5 pt-4 pb-3 border-b border-[#2a2a2a] flex items-center justify-between">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 5H4m0 0l4 4m-4-4l4-4" /></svg>
+                Edit Travel Segment
+              </h3>
+              <button onClick={onCancel} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="px-5 py-4 space-y-4">
+              {/* Mode tabs */}
+              <div>
+                <label className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5 block">Travel Mode</label>
+                <div className="flex bg-[#0a0a0a] rounded-xl p-1 gap-0.5">
+                  {TRAVEL_MODES.map(m => (
+                    <button key={m.id} onClick={() => setMode(m.id)}
+                      className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[11px] font-medium transition-all ${mode === m.id ? "bg-white/10 text-white shadow-sm border border-white/10" : "text-gray-600 hover:text-gray-400"}`}>
+                      <TravelIcon id={m.id} className="w-3.5 h-3.5" />
+                      <span>{m.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Section 1: Vehicle (drive mode only) */}
+              {mode === "drive" && vehicles.length > 0 && (
+                <div>
+                  <label className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5 block">Vehicle</label>
+                  <div className="flex items-start gap-1.5 flex-wrap">
+                    {vehicles.map(v => {
+                      const sel = vehicleId === v.id;
+                      return (
+                        <button key={v.id} onClick={() => setVehicleId(v.id)}
+                          className={`px-3 py-1.5 rounded-full text-[11px] font-medium transition-all ${sel ? "" : "opacity-50 hover:opacity-80"}`}
+                          style={{background: sel ? v.color : v.color + "15", color: sel ? "#fff" : v.color, border: `1px solid ${sel ? v.color : v.color + "44"}`}}>
+                          {v.name}
+                        </button>
+                      );
+                    })}
+                    <button onClick={() => setShowVehicleModal(true)}
+                      className="w-7 h-7 rounded-full flex items-center justify-center bg-[#0a0a0a] border border-[#2a2a2a] hover:bg-white/5 text-gray-500 hover:text-white transition-colors"
+                      title="Manage vehicles">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                    </button>
+                  </div>
                 </div>
               )}
+
+              {/* Section 2: Starting Battery (drive mode only) */}
+              {mode === "drive" && (() => {
+                const battPct = evLinked ? Math.round(battFrom) : evStartBattery;
+                const battColor = battPct > 50 ? "#22c55e" : battPct > 20 ? "#f59e0b" : "#ef4444";
+                return (
+                <div>
+                  <label className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5 block">Starting Battery</label>
+                  <div className="rounded-xl border border-[#2a2a2a] bg-[#0d0d0d] px-3.5 py-2.5">
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => setEvLinked(!evLinked)}
+                        className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${evLinked ? "text-blue-400 bg-blue-500/10 border border-blue-500/30" : "text-gray-500 bg-[#1a1a1a] border border-[#2a2a2a]"}`}>
+                        {evLinked ? (
+                          <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" /><path strokeLinecap="round" strokeLinejoin="round" d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg> Auto</>
+                        ) : (
+                          <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg> Manual</>
+                        )}
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <input type="range" min={0} max={100} value={battPct}
+                            onChange={e => { if (!evLinked) setEvStartBattery(+e.target.value); }}
+                            disabled={evLinked}
+                            className={`flex-1 h-1 ${evLinked ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}`}
+                            style={{background: `linear-gradient(to right, ${battColor} ${battPct}%, #2a2a2a ${battPct}%)`}} />
+                          <span className="text-sm font-bold w-10 text-right" style={{color: battColor}}>{battPct}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                );
+              })()}
+
+              {/* Section 3: Route Details */}
+              <div>
+                <label className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5 block">Route Details</label>
+                <div className="rounded-xl border border-[#2a2a2a] bg-[#0d0d0d] px-3.5 py-3 space-y-3">
+                  {/* Auto/Manual toggle row (drive mode only) */}
+                  {mode === "drive" && (
+                    <div className="flex items-center gap-3">
+                      <button onClick={handleAutoCalcToggle} disabled={!canAutoCalc}
+                        className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${!canAutoCalc ? "opacity-40 cursor-not-allowed " : ""}${autoCalc ? "text-blue-400 bg-blue-500/10 border border-blue-500/30" : "text-gray-500 bg-[#1a1a1a] border border-[#2a2a2a]"}`}>
+                        {autoCalc ? (
+                          <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" /><path strokeLinecap="round" strokeLinejoin="round" d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg> Auto</>
+                        ) : (
+                          <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg> Manual</>
+                        )}
+                      </button>
+                      {autoCalc && !calcLoading && (
+                        <span className="text-[9px] text-blue-400 flex items-center gap-1">
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.14 0M1.394 9.393c5.857-5.858 15.355-5.858 21.213 0" /></svg>
+                          OSRM
+                        </span>
+                      )}
+                      {calcLoading && <span className="text-[10px] text-gray-500 flex items-center gap-1.5"><InlineSpinner /> Calculating...</span>}
+                    </div>
+                  )}
+                  {/* Distance & Time — always rendered to keep size stable */}
+                  <div className={calcLoading ? "opacity-30 pointer-events-none" : ""}>
+                    <div className="flex gap-3">
+                      <div className="flex-1">
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 block">Distance (km)</label>
+                        <input type="number" value={dist} onChange={e => setDist(+e.target.value)} disabled={autoCalc || calcLoading}
+                          className={`w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500/50 focus:outline-none ${autoCalc ? "opacity-50 cursor-not-allowed" : ""}`} />
+                      </div>
+                      <div className="flex-1">
+                        <label className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 block">Time (min)</label>
+                        <input type="number" value={drive} onChange={e => setDrive(+e.target.value)} disabled={autoCalc || calcLoading}
+                          className={`w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500/50 focus:outline-none ${autoCalc ? "opacity-50 cursor-not-allowed" : ""}`} />
+                      </div>
+                    </div>
+                    {/* Battery % slider (drive mode only) */}
+                    {mode === "drive" && (
+                      <div className="mt-3">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="text-[10px] text-gray-500 uppercase tracking-wider">Battery Consumption</label>
+                          <span className={`text-sm font-bold ${autoCalc ? "text-red-400/50" : "text-red-400"}`}>{batt}%</span>
+                        </div>
+                        <input type="range" min={0} max={100} value={batt} onChange={e => setBatt(+e.target.value)} disabled={autoCalc || calcLoading}
+                          className={`w-full h-1 ${autoCalc ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`} style={{background: `linear-gradient(to right, #ef4444 ${batt}%, #2a2a2a ${batt}%)`}} />
+                        <div className="flex justify-between text-[9px] text-gray-600 mt-1">
+                          <span>0%</span><span>50%</span><span>100%</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
 
+            {/* Footer */}
+            <div className="px-5 py-3 border-t border-[#2a2a2a] flex justify-end gap-2">
+              <button onClick={onCancel}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 transition-colors">
+                Cancel
+              </button>
+              <button onClick={handleDone}
+                className="px-5 py-2 rounded-lg text-sm font-bold bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-400 transition-colors">
+                ✓ Done
+              </button>
+            </div>
+          </div>
+          {showVehicleModal && (
+            <VehicleManagementModal vehicles={vehicles} onUpdateVehicles={onUpdateVehicles} onCancel={() => setShowVehicleModal(false)} />
+          )}
+        </div>
+      );
+    }
+
+    function VehicleManagementModal({ vehicles, onUpdateVehicles, onCancel }) {
+      const [localVehicles, setLocalVehicles] = useState(JSON.parse(JSON.stringify(vehicles)));
+      const [selectedId, setSelectedId] = useState(localVehicles[0]?.id || "");
+
+      const selected = localVehicles.find(v => v.id === selectedId);
+
+      const updateSelected = (updates) => {
+        setLocalVehicles(prev => prev.map(v => v.id === selectedId ? { ...v, ...updates } : v));
+      };
+
+      const addVehicle = () => {
+        const newV = {
+          id: `v-${Date.now()}`, name: "New Vehicle", registration: "", color: DAY_COLORS[localVehicles.length % DAY_COLORS.length],
+          batteryKWh: 60, chargeCurve: DEFAULT_CHARGE_CURVE,
+          consumptionRates: { city: 12, suburban: 13, country: 14.5, highway: 16, fastHighway: 18, motorway: 20 },
+        };
+        setLocalVehicles(prev => [...prev, newV]);
+        setSelectedId(newV.id);
+      };
+
+      const deleteVehicle = (id) => {
+        if (localVehicles.length <= 1) return;
+        const filtered = localVehicles.filter(v => v.id !== id);
+        setLocalVehicles(filtered);
+        if (selectedId === id) setSelectedId(filtered[0]?.id || "");
+      };
+
+      const handleDone = () => {
+        if (onUpdateVehicles) onUpdateVehicles(localVehicles);
+        onCancel();
+      };
+
+      const VEHICLE_COLORS = ["#3b82f6","#14b8a6","#a855f7","#f59e0b","#ef4444","#ec4899","#8b5cf6","#06b6d4","#22c55e","#f97316"];
+
+      return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" onClick={onCancel}>
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <div className="relative bg-[#141414] border border-[#2a2a2a] rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="px-5 pt-4 pb-3 border-b border-[#2a2a2a] flex items-center justify-between shrink-0">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M8 17h.01M16 17h.01M5.2 17H4a1 1 0 01-1-1v-3.6a1 1 0 01.2-.6L5 9l1.6-4A1 1 0 017.5 4h9a1 1 0 01.9.6L19 9l1.8 2.8a1 1 0 01.2.6V16a1 1 0 01-1 1h-1.2M7 17a2 2 0 104 0H7zm6 0a2 2 0 104 0h-4z" /></svg>
+                Manage Vehicles
+              </h3>
+              <button onClick={onCancel} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="flex flex-1 overflow-hidden">
+              {/* Left: vehicle list */}
+              <div className="w-48 border-r border-[#2a2a2a] flex flex-col bg-[#0d0d0d]">
+                <div className="flex-1 overflow-y-auto py-2">
+                  {localVehicles.map(v => (
+                    <button key={v.id} onClick={() => setSelectedId(v.id)}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors ${v.id === selectedId ? "bg-white/5 text-white" : "text-gray-400 hover:text-white hover:bg-white/[0.02]"}`}>
+                      <span className="w-3 h-3 rounded-full shrink-0" style={{background: v.color}} />
+                      <span className="text-[12px] font-medium truncate">{v.name}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="border-t border-[#2a2a2a] p-2">
+                  <button onClick={addVehicle}
+                    className="w-full py-2 rounded-lg border border-dashed border-[#2a2a2a] hover:border-blue-500/40 text-gray-500 hover:text-blue-400 text-[11px] font-medium flex items-center justify-center gap-1 transition-colors">
+                    <span>+</span> Add Vehicle
+                  </button>
+                </div>
+              </div>
+              {/* Right: edit form */}
+              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+                {selected ? (
+                  <>
+                    <div>
+                      <label className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 block">Name</label>
+                      <input value={selected.name} onChange={e => updateSelected({ name: e.target.value })}
+                        className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg px-3 py-2 text-sm text-white font-semibold focus:border-blue-500/50 focus:outline-none" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 block">Registration</label>
+                      <input value={selected.registration || ""} onChange={e => updateSelected({ registration: e.target.value })}
+                        placeholder="e.g. ABC-123"
+                        className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg px-3 py-2 text-sm text-gray-300 focus:border-blue-500/50 focus:outline-none" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 block">Color</label>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {VEHICLE_COLORS.map(c => (
+                          <button key={c} onClick={() => updateSelected({ color: c })}
+                            className={`w-7 h-7 rounded-full border-2 transition-all ${c === selected.color ? "border-white scale-110" : "border-transparent opacity-60 hover:opacity-100"}`}
+                            style={{background: c}} />
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 block">Battery Capacity (kWh)</label>
+                      <input type="number" value={selected.batteryKWh} onChange={e => updateSelected({ batteryKWh: +e.target.value })}
+                        className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg px-3 py-2 text-sm text-white focus:border-blue-500/50 focus:outline-none" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5 block">Consumption Rates (kWh/100km)</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {[["city","City (≤40km/h)"],["suburban","Suburban (≤60)"],["country","Country (≤80)"],["highway","Highway (≤100)"],["fastHighway","Fast Hwy (≤110)"],["motorway","Motorway (110+)"]].map(([key, label]) => (
+                          <label key={key} className="flex items-center gap-2 text-[10px] text-gray-500">
+                            <span className="w-24 shrink-0">{label}</span>
+                            <input type="number" step="0.5" value={selected.consumptionRates?.[key] ?? 15}
+                              onChange={e => updateSelected({ consumptionRates: { ...selected.consumptionRates, [key]: +e.target.value }})}
+                              className="w-16 bg-[#0a0a0a] border border-[#2a2a2a] rounded px-2 py-1 text-white text-[11px]" />
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    {localVehicles.length > 1 && (
+                      <button onClick={() => deleteVehicle(selected.id)}
+                        className="mt-2 flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-medium bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 transition-colors">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                        Delete Vehicle
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-gray-500 text-sm">No vehicle selected</div>
+                )}
+              </div>
+            </div>
+            {/* Footer */}
+            <div className="px-5 py-3 border-t border-[#2a2a2a] flex justify-end gap-2 shrink-0">
+              <button onClick={onCancel}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 transition-colors">
+                Cancel
+              </button>
+              <button onClick={handleDone}
+                className="px-5 py-2 rounded-lg text-sm font-bold bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-400 transition-colors">
+                ✓ Done
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function ClockPickerModal({ hour, minute, onConfirm, onCancel, color }) {
+      const [mode, setMode] = useState("hour"); // "hour" | "minute"
+      const [h, setH] = useState(hour);
+      const [m, setM] = useState(minute);
+      const isAM = h < 12;
+      const display12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+
+      const toggleAMPM = () => setH(prev => prev < 12 ? prev + 12 : prev - 12);
+
+      const handleClockClick = (e) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const cx = rect.width / 2, cy = rect.height / 2;
+        const x = e.clientX - rect.left - cx, y = e.clientY - rect.top - cy;
+        const angle = (Math.atan2(x, -y) * 180 / Math.PI + 360) % 360;
+        if (mode === "hour") {
+          let picked = Math.round(angle / 30) % 12;
+          if (picked === 0) picked = 12;
+          setH(isAM ? (picked === 12 ? 0 : picked) : (picked === 12 ? 12 : picked + 12));
+          setTimeout(() => setMode("minute"), 200);
+        } else {
+          let picked = Math.round(angle / 6) % 60;
+          // Snap to 5-min intervals
+          picked = Math.round(picked / 5) * 5;
+          if (picked === 60) picked = 0;
+          setM(picked);
+        }
+      };
+
+      const clockNumbers = mode === "hour"
+        ? Array.from({length:12},(_,i)=>i+1)
+        : [0,5,10,15,20,25,30,35,40,45,50,55];
+
+      const activeAngle = mode === "hour"
+        ? (display12 % 12) * 30
+        : m * 6;
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onCancel}>
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <div className="relative bg-[#1a1a1a] border border-[#2a2a2a] rounded-2xl w-72 shadow-2xl overflow-hidden" onClick={e=>e.stopPropagation()}>
+            {/* Header: time display */}
+            <div className="px-5 pt-5 pb-3 text-center">
+              <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-2">Set departure time</div>
+              <div className="flex items-center justify-center gap-1">
+                <button onClick={()=>setMode("hour")}
+                  className={`text-4xl font-bold px-2 py-1 rounded-lg transition-colors ${mode==="hour" ? "bg-white/10" : "text-gray-500 hover:text-gray-300"}`}
+                  style={mode==="hour" ? {color} : undefined}>
+                  {String(display12).padStart(2,"0")}
+                </button>
+                <span className="text-4xl font-bold text-gray-500">:</span>
+                <button onClick={()=>setMode("minute")}
+                  className={`text-4xl font-bold px-2 py-1 rounded-lg transition-colors ${mode==="minute" ? "bg-white/10" : "text-gray-500 hover:text-gray-300"}`}
+                  style={mode==="minute" ? {color} : undefined}>
+                  {String(m).padStart(2,"0")}
+                </button>
+                <div className="flex flex-col ml-2 gap-0.5">
+                  <button onClick={()=>{ if (!isAM) toggleAMPM(); }}
+                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded transition-colors ${isAM ? "bg-white/10" : "text-gray-500 hover:text-gray-300"}`}
+                    style={isAM ? {color} : undefined}>AM</button>
+                  <button onClick={()=>{ if (isAM) toggleAMPM(); }}
+                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded transition-colors ${!isAM ? "bg-white/10" : "text-gray-500 hover:text-gray-300"}`}
+                    style={!isAM ? {color} : undefined}>PM</button>
+                </div>
+              </div>
+            </div>
+            {/* Clock face */}
+            <div className="px-5 pb-3">
+              <div className="relative w-52 h-52 mx-auto rounded-full bg-[#0d0d0d] border border-[#2a2a2a] cursor-pointer" onClick={handleClockClick}>
+                {/* Hand */}
+                <div className="absolute top-1/2 left-1/2 origin-bottom" style={{
+                  width:"2px", height:"72px", background: color, borderRadius:"1px",
+                  transform:`translate(-50%, -100%) rotate(${activeAngle}deg)`,
+                  transition:"transform 0.2s ease"
+                }}>
+                  <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full" style={{background:color}} />
+                </div>
+                {/* Center dot */}
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{background:color}} />
+                {/* Numbers */}
+                {clockNumbers.map(n => {
+                  const angle = mode === "hour" ? (n % 12) * 30 : n * 6;
+                  const rad = (angle - 90) * Math.PI / 180;
+                  const r = 38; // % from center
+                  const x = 50 + r * Math.cos(rad);
+                  const y = 50 + r * Math.sin(rad);
+                  const isActive = (mode === "hour" && n === display12) || (mode === "minute" && n === m);
+                  return (
+                    <div key={n} className="absolute flex items-center justify-center w-8 h-8 -ml-4 -mt-4 rounded-full text-xs font-bold transition-colors"
+                      style={{left:`${x}%`, top:`${y}%`,
+                        background: isActive ? color : "transparent",
+                        color: isActive ? "#000" : "#999"
+                      }}>
+                      {mode === "minute" ? String(n).padStart(2,"0") : n}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            {/* Footer */}
+            <div className="px-5 py-3 border-t border-[#2a2a2a] flex justify-end gap-2">
+              <button onClick={onCancel}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 transition-colors">Cancel</button>
+              <button onClick={()=>onConfirm(h, m)}
+                className="px-5 py-2 rounded-lg text-sm font-bold bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-400 transition-colors">✓ Done</button>
+            </div>
           </div>
         </div>
       );
@@ -475,10 +950,8 @@
 
     function AddStopButton({ onClick }) {
       return (
-        <div className="flex gap-0 -mt-3 mb-3 relative z-10">
-          <div className="w-20 shrink-0 flex justify-center">
-            <div className="w-[2px] h-full bg-[#2a2a2a]" />
-          </div>
+        <div className="flex gap-0 relative z-10">
+          <div className="w-20 shrink-0" />
           <div className="flex-1 py-1">
             <button onClick={onClick}
               className="w-full py-2 rounded-xl border-2 border-dashed border-[#2a2a2a] hover:border-blue-500/50 bg-transparent hover:bg-blue-500/5 text-gray-500 hover:text-blue-400 text-[11px] font-medium flex items-center justify-center gap-1.5 transition-all">
@@ -499,35 +972,45 @@
 
     // Speed-based battery consumption for Tesla Model 3 Base (LFP 60kWh)
     // Returns kWh/100km based on average speed
-    function consumptionAtSpeed(avgKmh) {
-      if (avgKmh <= 40) return 12;   // city crawl
-      if (avgKmh <= 60) return 13;   // suburban
-      if (avgKmh <= 80) return 14.5; // outer suburban / country
-      if (avgKmh <= 100) return 16;  // highway
-      if (avgKmh <= 110) return 18;  // fast highway
-      return 20;                      // motorway 110+
+    function consumptionAtSpeed(avgKmh, vehicle) {
+      if (vehicle?.consumptionRates) {
+        const r = vehicle.consumptionRates;
+        if (avgKmh <= 40) return r.city;
+        if (avgKmh <= 60) return r.suburban;
+        if (avgKmh <= 80) return r.country;
+        if (avgKmh <= 100) return r.highway;
+        if (avgKmh <= 110) return r.fastHighway;
+        return r.motorway;
+      }
+      if (avgKmh <= 40) return 12;
+      if (avgKmh <= 60) return 13;
+      if (avgKmh <= 80) return 14.5;
+      if (avgKmh <= 100) return 16;
+      if (avgKmh <= 110) return 18;
+      return 20;
     }
 
     // Get real road distance + drive time via OSRM (free, no key)
-    async function fetchDriveStats(fromLat, fromLng, toLat, toLng) {
+    async function fetchDriveStats(fromLat, fromLng, toLat, toLng, vehicle) {
       try {
         const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${fromLng},${fromLat};${toLng},${toLat}?overview=false`);
         const data = await res.json();
         if (data.code === "Ok" && data.routes && data.routes.length > 0) {
           const route = data.routes[0];
-          const dist = Math.round(route.distance / 1000); // meters to km
-          const drive = Math.round(route.duration / 60); // seconds to minutes
-          const avgSpeed = dist / (drive / 60); // km/h
-          const kwhPer100 = consumptionAtSpeed(avgSpeed);
-          const energyUsed = dist * kwhPer100 / 100; // kWh
-          const batt = Math.round(energyUsed / BATTERY_KWH * 100); // % of 60kWh battery
+          const dist = Math.round(route.distance / 1000);
+          const drive = Math.round(route.duration / 60);
+          const avgSpeed = dist / (drive / 60);
+          const kwhPer100 = consumptionAtSpeed(avgSpeed, vehicle);
+          const battKWh = vehicle?.batteryKWh || BATTERY_KWH;
+          const energyUsed = dist * kwhPer100 / 100;
+          const batt = Math.round(energyUsed / battKWh * 100);
           return { dist, drive, batt, _routeSource: "osrm" };
         }
       } catch {}
-      // Fallback to estimate if OSRM fails
       const straight = haversine(fromLat, fromLng, toLat, toLng);
       const roadKm = Math.round(straight * 1.35);
-      return { dist: roadKm, drive: Math.round(roadKm / 80 * 60), batt: Math.round(roadKm * 0.23), _routeSource: "estimate" };
+      const battKWh = vehicle?.batteryKWh || BATTERY_KWH;
+      return { dist: roadKm, drive: Math.round(roadKm / 80 * 60), batt: Math.round(roadKm * 0.23 * 60 / battKWh), _routeSource: "estimate" };
     }
 
     // Geocode address via Nominatim, returns {lat, lng} or null
@@ -636,133 +1119,6 @@
         const data = await res.json();
         return data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
       } catch { return `${lat.toFixed(5)}, ${lng.toFixed(5)}`; }
-    }
-
-    function AddressEditModal({ stop, prevStop, nextStop, onSave, onCancel }) {
-      const [addr, setAddr] = useState(stop.address || "");
-      const [lat, setLat] = useState(stop.lat || -37.8136);
-      const [lng, setLng] = useState(stop.lng || 144.9631);
-      const [name, setName] = useState(stop.name || "");
-      const [suggestions, setSuggestions] = useState([]);
-      const [showSugg, setShowSugg] = useState(false);
-      const [timer, setTimer] = useState(null);
-      const mapRef = React.useRef(null);
-      const mapInstanceRef = React.useRef(null);
-      const markerRef = React.useRef(null);
-      const inputRef = React.useRef(null);
-
-      // Initialize Leaflet map — pin fixed to center, move map to move pin
-      React.useEffect(() => {
-        if (!mapRef.current || mapInstanceRef.current) return;
-        const map = L.map(mapRef.current, { zoomControl: true }).setView([lat, lng], 14);
-        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-          attribution: '© OpenStreetMap',
-        }).addTo(map);
-        let debounceTimer = null;
-        map.on("moveend", () => {
-          const c = map.getCenter();
-          setLat(c.lat); setLng(c.lng);
-          if (debounceTimer) clearTimeout(debounceTimer);
-          debounceTimer = setTimeout(async () => {
-            const address = await reverseGeocode(c.lat, c.lng);
-            setAddr(address);
-          }, 600);
-        });
-        mapInstanceRef.current = map;
-        setTimeout(() => map.invalidateSize(), 200);
-        return () => { map.remove(); mapInstanceRef.current = null; };
-      }, []);
-
-      // Move map when lat/lng change from search
-      const moveMap = (newLat, newLng) => {
-        setLat(newLat); setLng(newLng);
-        if (mapInstanceRef.current) mapInstanceRef.current.setView([newLat, newLng], 15);
-      };
-
-      const handleInput = (val) => {
-        setAddr(val);
-        if (timer) clearTimeout(timer);
-        setTimer(setTimeout(async () => {
-          const s = await fetchSuggestions(val);
-          setSuggestions(s); setShowSugg(s.length > 0);
-        }, 300));
-      };
-
-      const pickSuggestion = (s) => {
-        setAddr(s.address); setName(s.name || s.address.split(",")[0]);
-        setShowSugg(false);
-        if (s.lat && s.lng) moveMap(s.lat, s.lng);
-      };
-
-      const handleDone = () => {
-        const updates = { address: addr, name: name || addr.split(",")[0], lat, lng, mq: addr.replace(/\s+/g, "+") };
-        if (isChargerName(addr) || isChargerName(name)) {
-          updates.type = "charge"; updates.charge = makeChargeDefaults(); updates.emoji = "⚡";
-          updates.poi = (name || addr).replace(/\s+/g, "+");
-        }
-        onSave(updates);
-      };
-
-      return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onCancel}>
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-          <div className="relative bg-[#141414] border border-[#2a2a2a] rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden" onClick={e=>e.stopPropagation()}>
-            {/* Header */}
-            <div className="px-5 pt-4 pb-2">
-              <h3 className="text-base font-bold text-white mb-3">📍 Edit Location</h3>
-              {/* Search bar */}
-              <div className="relative">
-                <input ref={inputRef} value={addr} onChange={e=>handleInput(e.target.value)}
-                  onFocus={()=>{ if (suggestions.length) setShowSugg(true); }}
-                  placeholder="Search for an address or place..."
-                  className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:border-blue-500/50 focus:outline-none" />
-                {showSugg && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg shadow-xl max-h-40 overflow-y-auto" style={{zIndex:2000}}>
-                    {suggestions.map((s, i) => (
-                      <button key={i} onClick={()=>pickSuggestion(s)}
-                        className="w-full text-left px-3 py-2 text-[11px] text-gray-300 hover:bg-[#2a2a2a] hover:text-white transition-colors border-b border-[#222] last:border-0 flex items-start gap-2">
-                        <span className="text-gray-500 shrink-0 mt-0.5">📍</span>
-                        <span className="leading-snug">{s.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {/* Name field */}
-              <input value={name} onChange={e=>setName(e.target.value)} placeholder="Stop name"
-                className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg px-3 py-1.5 text-[11px] text-gray-300 mt-2 focus:border-blue-500/50 focus:outline-none" />
-            </div>
-            {/* Map with fixed center pin */}
-            <div className="relative border-t border-b border-[#2a2a2a]">
-              <div ref={mapRef} style={{height:"320px",width:"100%"}} />
-              {/* Fixed pin in center */}
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[1000]">
-                <div className="flex flex-col items-center -mt-8">
-                  <span className="text-3xl drop-shadow-lg">📍</span>
-                  <div className="w-2 h-2 rounded-full bg-black/30 mt-[-4px]" />
-                </div>
-              </div>
-            </div>
-            {/* Coordinates display */}
-            <div className="px-5 py-1.5 text-[10px] text-gray-500 flex gap-3">
-              <span>Lat: {lat.toFixed(5)}</span>
-              <span>Lng: {lng.toFixed(5)}</span>
-              <span className="text-gray-600 ml-auto">Move the map to change location</span>
-            </div>
-            {/* Footer buttons */}
-            <div className="px-5 py-3 flex justify-end gap-2 border-t border-[#2a2a2a]">
-              <button onClick={onCancel}
-                className="px-4 py-2 rounded-lg text-sm font-medium bg-[#2a2a2a] hover:bg-[#3a3a3a] text-gray-300 transition-colors">
-                Cancel
-              </button>
-              <button onClick={handleDone}
-                className="px-5 py-2 rounded-lg text-sm font-bold bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/50 text-blue-400 transition-colors">
-                ✓ Done
-              </button>
-            </div>
-          </div>
-        </div>
-      );
     }
 
     // ── Stop Edit Modal (full editing with inline map) ──
@@ -927,11 +1283,11 @@
             {/* Footer */}
             <div className="px-5 py-3 border-t border-[#2a2a2a] flex justify-end gap-2 shrink-0">
               <button onClick={onCancel}
-                className="px-4 py-2 rounded-lg text-sm font-medium bg-[#2a2a2a] hover:bg-[#3a3a3a] text-gray-300 transition-colors">
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 transition-colors">
                 Cancel
               </button>
               <button onClick={()=>{ saveLocation(); onCancel(); }}
-                className="px-5 py-2 rounded-lg text-sm font-bold bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/50 text-blue-400 transition-colors">
+                className="px-5 py-2 rounded-lg text-sm font-bold bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-400 transition-colors">
                 ✓ Done
               </button>
             </div>
@@ -940,53 +1296,65 @@
       );
     }
 
-    function StopCard({stop, battArr, battDep, arrTime, onChange, color, homeBattery, onHomeBatteryChange, editMode, onDelete, onEditField, prevStop, nextStop, dragHandle, isLast, stopWeather, routeLoading, weatherLoading, setRecalcStopIds, onStopClick, onDragStartStop, onDragEndStop}) {
+    function StopCard({stop, battArr, battDep, arrTime, onChange, color, homeBattery, onHomeBatteryChange, editMode, onDelete, onEditField, prevStop, nextStop, isLast, stopWeather, routeLoading, weatherLoading, setRecalcStopIds, onStopClick, onDragStartStop, onDragEndStop, startH, startM, onStartTime}) {
       const isCh=stop.type==="charge";
       const isFirst = !prevStop;
       const adj = !isFirst && !isLast;
       const dotBg = isCh?"#22c55e":isLast?"#6366f1":isFirst?color:"#374151";
       const dotBorder = isCh?"#22c55e":color;
       const [showEditModal, setShowEditModal] = useState(false);
+      const [showClockPicker, setShowClockPicker] = useState(false);
       const dragStarted = React.useRef(false);
       return (
-        <div className="flex gap-0 pb-5">
+        <div className="flex gap-0 py-2.5">
           {/* Left column: time + timeline dot + line */}
           <div className="flex flex-col items-center w-20 shrink-0 pt-1">
             <div className="text-center mb-1.5">
-              <div className="text-[9px] text-gray-500 uppercase tracking-wider">{!prevStop ? "Depart" : "Arrive"}</div>
-              <div className="text-[11px] font-bold text-white">{arrTime}</div>
+              <div className="text-[9px] text-gray-500 uppercase tracking-wider">{isFirst ? "Depart" : "Arrive"}</div>
+              {editMode && isFirst && onStartTime ? (
+                <button onClick={e => { e.stopPropagation(); setShowClockPicker(true); }}
+                  className="text-[11px] font-bold px-2 py-0.5 rounded-md cursor-pointer transition-colors hover:brightness-125"
+                  style={{background: color + "22", color, border: `1px solid ${color}44`}}>
+                  {arrTime}
+                </button>
+              ) : (
+                <div className="text-[11px] font-bold text-white">{arrTime}</div>
+              )}
             </div>
-            {!prevStop && (
+            {showClockPicker && (
+              <ClockPickerModal hour={startH} minute={startM} color={color}
+                onConfirm={(h, m) => { onStartTime(h, m); setShowClockPicker(false); }}
+                onCancel={() => setShowClockPicker(false)} />
+            )}
+            {!editMode && !prevStop && (
               <div className="w-6 h-6 rounded-full bg-[#166534] border-2 border-[#22c55e] flex items-center justify-center text-[10px] shrink-0 mb-0.5">🚩</div>
             )}
             <div className="flex flex-col items-center flex-1 py-1">
               <div className="w-[2px] flex-1" style={{background:`${color}22`}} />
-              {isLast && <div className="w-6 h-6 rounded-full bg-[#1e1b4b] border-2 border-[#4338ca] flex items-center justify-center text-[10px] shrink-0 mt-1">🌙</div>}
+              {!editMode && isLast && <div className="w-6 h-6 rounded-full bg-[#1e1b4b] border-2 border-[#4338ca] flex items-center justify-center text-[10px] shrink-0 mt-1">🌙</div>}
             </div>
           </div>
           {/* Right: card */}
-          <div className="flex-1 min-w-0 relative">
-            {editMode && onDelete && (
-              <button onClick={(e)=>{ e.stopPropagation(); onDelete(stop.id); }}
-                className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 hover:bg-red-400 text-white text-[10px] font-bold flex items-center justify-center z-20 shadow transition-colors"
-                title="Remove stop">✕</button>
-            )}
-            <div className={`card-glow rounded-xl bg-[#141414] border border-[#2a2a2a] overflow-hidden transition-all hover:border-[#3a3a3a] relative cursor-pointer ${editMode ? "group/card" : ""}`}
-              draggable={editMode ? "true" : undefined}
-              onDragStart={e => { if (editMode) { dragStarted.current = true; e.dataTransfer.setData("stopId", stop.id); e.dataTransfer.effectAllowed = "move"; if (onDragStartStop) requestAnimationFrame(() => onDragStartStop(stop.id)); } }}
-              onDragEnd={() => { if (onDragEndStop) onDragEndStop(); setTimeout(() => { dragStarted.current = false; }, 50); }}
-              onClick={()=>{ if (editMode && !dragStarted.current) setShowEditModal(true); else if (!editMode && onStopClick) onStopClick(stop.id); }}>
+          <div className="flex-1 min-w-0">
+            <div className="card-glow rounded-xl bg-[#141414] border border-[#2a2a2a] overflow-hidden transition-all hover:border-[#3a3a3a]"
+              onClick={()=>{ if (!editMode && onStopClick) onStopClick(stop.id); }}>
               <div className="flex">
+                {/* Zone 1: Drag handle */}
                 {editMode && (
-                  <div className="w-6 shrink-0 flex items-center justify-center bg-[#0d0d0d] border-r border-[#2a2a2a] cursor-grab active:cursor-grabbing">
-                    <div className="flex flex-col gap-[3px] opacity-30 group-hover/card:opacity-60 transition-opacity">
-                      <div className="w-3 h-[1.5px] bg-gray-400 rounded" />
-                      <div className="w-3 h-[1.5px] bg-gray-400 rounded" />
-                      <div className="w-3 h-[1.5px] bg-gray-400 rounded" />
+                  <div className="w-8 shrink-0 flex items-center justify-center bg-[#0d0d0d] border-r border-[#2a2a2a] cursor-grab active:cursor-grabbing hover:bg-blue-500/10 transition-colors group/drag"
+                    draggable="true"
+                    onDragStart={e => { dragStarted.current = true; e.dataTransfer.setData("stopId", stop.id); e.dataTransfer.effectAllowed = "move"; if (onDragStartStop) requestAnimationFrame(() => onDragStartStop(stop.id)); }}
+                    onDragEnd={() => { if (onDragEndStop) onDragEndStop(); setTimeout(() => { dragStarted.current = false; }, 50); }}>
+                    <div className="flex flex-col gap-[3px] opacity-30 group-hover/drag:opacity-70 transition-opacity">
+                      <div className="w-3.5 h-[1.5px] bg-gray-400 group-hover/drag:bg-blue-400 rounded transition-colors" />
+                      <div className="w-3.5 h-[1.5px] bg-gray-400 group-hover/drag:bg-blue-400 rounded transition-colors" />
+                      <div className="w-3.5 h-[1.5px] bg-gray-400 group-hover/drag:bg-blue-400 rounded transition-colors" />
                     </div>
                   </div>
                 )}
-                <div className="flex-1 min-w-0">
+                {/* Zone 2: Content (click to edit) */}
+                <div className={`flex-1 min-w-0 ${editMode ? "cursor-pointer hover:bg-white/[0.03] transition-colors group/edit" : ""}`}
+                  onClick={()=>{ if (editMode && !dragStarted.current) setShowEditModal(true); }}>
                   <div className="p-3.5 pb-2.5">
                     {editMode ? (
                       <div className="flex items-center gap-2">
@@ -995,7 +1363,7 @@
                           <h3 className="font-semibold text-white text-sm truncate">{stop.name}</h3>
                           {stop.desc && <p className="text-[10px] text-gray-500 truncate">{stop.desc}</p>}
                         </div>
-                        <svg className="w-3.5 h-3.5 text-gray-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                        <svg className="w-3.5 h-3.5 text-gray-600 group-hover/edit:text-blue-400 shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                       </div>
                     ) : (
                       <>
@@ -1046,14 +1414,15 @@
                     </>
                   )}
                 </div>
-
+                {/* Zone 3: Delete button */}
+                {editMode && onDelete && (
+                  <button onClick={(e)=>{ e.stopPropagation(); onDelete(stop.id); }}
+                    className="w-8 shrink-0 flex items-center justify-center border-l border-[#2a2a2a] bg-[#0d0d0d] hover:bg-red-500/15 text-gray-600 hover:text-red-400 transition-colors group/del"
+                    title="Remove stop">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                  </button>
+                )}
               </div>
-              {/* Edit mode hover overlay */}
-              {editMode && (
-                <div className="absolute inset-0 bg-blue-500/10 backdrop-blur-[2px] opacity-0 group-hover/card:opacity-100 transition-opacity flex items-center justify-center pointer-events-none rounded-xl">
-                  <span className="text-sm text-white font-medium">Drag to move · Click to edit</span>
-                </div>
-              )}
             </div>
             {showEditModal && (
               <StopEditModal stop={stop} prevStop={prevStop} nextStop={nextStop}
@@ -1207,6 +1576,70 @@
 
     const DAY_COLORS = ["#3b82f6","#14b8a6","#a855f7","#f59e0b","#ef4444","#ec4899","#8b5cf6","#06b6d4"];
 
+    function DayEditModal({ day, onEditDay, onCancel }) {
+      const [title, setTitle] = useState(day.title);
+      const [subtitle, setSubtitle] = useState(day.subtitle);
+      const [date, setDate] = useState(parseDate(day.date) || "");
+      const [color, setColor] = useState(day.color);
+
+      const handleDone = () => {
+        const updates = { title, subtitle, color };
+        if (date) {
+          const d = new Date(date + "T12:00:00");
+          if (!isNaN(d)) updates.date = d.toLocaleDateString("en-AU", {weekday:"long", day:"numeric", month:"long", year:"numeric"});
+        }
+        onEditDay(day.day, updates);
+        onCancel();
+      };
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onCancel}>
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <div className="relative bg-[#141414] border border-[#2a2a2a] rounded-2xl w-full max-w-md shadow-2xl overflow-hidden" onClick={e=>e.stopPropagation()}>
+            <div className="px-5 pt-4 pb-3 border-b border-[#2a2a2a] flex items-center justify-between">
+              <h3 className="text-base font-bold text-white">✏️ Edit Day {day.day}</h3>
+              <button onClick={onCancel} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <div>
+                <label className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 block">Color</label>
+                <div className="flex gap-1.5">
+                  {DAY_COLORS.map(c=>(
+                    <button key={c} onClick={()=>setColor(c)}
+                      className={`w-7 h-7 rounded-full border-2 transition-all ${c===color?"border-white scale-110":"border-transparent opacity-60 hover:opacity-100"}`}
+                      style={{background:c}} />
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 block">Date</label>
+                <input type="date" value={date} onChange={e=>setDate(e.target.value)}
+                  className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg px-3 py-2 text-sm text-gray-300 focus:border-blue-500/50 focus:outline-none" />
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 block">Title</label>
+                <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Day title"
+                  className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg px-3 py-2 text-sm font-bold text-white focus:border-blue-500/50 focus:outline-none" />
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 block">Subtitle</label>
+                <input value={subtitle} onChange={e=>setSubtitle(e.target.value)} placeholder="Subtitle"
+                  className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg px-3 py-2 text-sm text-gray-400 focus:border-blue-500/50 focus:outline-none" />
+              </div>
+            </div>
+            <div className="px-5 py-3 border-t border-[#2a2a2a] flex justify-end gap-2">
+              <button onClick={onCancel}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 transition-colors">Cancel</button>
+              <button onClick={handleDone}
+                className="px-5 py-2 rounded-lg text-sm font-bold bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-400 transition-colors">✓ Done</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     // ── Sticky Route Map (Leaflet + LRM) ──
     function StickyRouteMap({ days, activeDayIdx, startTimes, activeStopId }) {
       const mapRef = React.useRef(null);
@@ -1328,13 +1761,19 @@
       );
     }
 
-    function DaySection({day, onChange, startH, startM, onStartTime, homeBattery, onHomeBatteryChange, editMode, onDelete, onEditField, onAddStop, onEditDay, onDeleteDay, onDayDragStart, onDayDragEnd, recalcStopIds, setRecalcStopIds, onStopClick}) {
+    function DaySection({day, onChange, startH, startM, onStartTime, homeBattery, onHomeBatteryChange, editMode, onDelete, onEditField, onAddStop, onEditDay, onDeleteDay, onDayDragStart, onDayDragEnd, recalcStopIds, setRecalcStopIds, onStopClick, isDayDragging, vehicles, onUpdateVehicles}) {
       const st = dayStats(day.stops);
       const levels = useMemo(() => {
-        let lastEvBatt = clampPct(day.startBattery), el=0, out=[];
+        const vehicleBatt = {};
+        vehicles.forEach(v => { vehicleBatt[v.id] = clampPct(day.startBattery); });
+        let defaultBatt = clampPct(day.startBattery);
+        let el=0, out=[];
         day.stops.forEach((s, i) => {
           const mode = s.travelMode || "drive";
           const isFirst = i === 0;
+          const vid = s.vehicleId || vehicles[0]?.id || "v1";
+          const vehicle = vehicles.find(v => v.id === vid) || vehicles[0];
+          let lastEvBatt = vehicleBatt[vid] ?? defaultBatt;
           let evStart = lastEvBatt;
           if (!isFirst && mode === "drive" && s.evLinked === false) {
             evStart = clampPct(s.evStartBattery ?? 100);
@@ -1342,7 +1781,8 @@
           let arr;
           if (mode === "drive") {
             arr = clampPct(evStart - (Number(s.batt) || 0));
-            lastEvBatt = arr;
+            vehicleBatt[vid] = arr;
+            defaultBatt = arr;
           } else {
             arr = lastEvBatt;
           }
@@ -1350,13 +1790,14 @@
           const t = timeOfDay(startH, startM + el);
           let dep = arr;
           if (s.type === "charge" && s.charge) {
-            dep = clampPct(calcChargedSOC(arr, s.charge.kw, s.stay));
-            lastEvBatt = dep;
+            dep = clampPct(calcChargedSOC(arr, s.charge.kw, s.stay, vehicle));
+            vehicleBatt[vid] = dep;
+            defaultBatt = dep;
           }
           out.push({arr, dep, t, evStart}); el += s.stay;
         });
         return out;
-      }, [day, startH, startM]);
+      }, [day, startH, startM, vehicles]);
       const endT = useMemo(()=>timeOfDay(startH, startM + day.stops.reduce((s,x)=>s+x.drive+x.stay,0)), [day,startH,startM]);
       // Weather data for the day and all stops — re-fetch when locations change
       const [weatherData, setWeatherData] = useState(null);
@@ -1385,6 +1826,7 @@
       const stopsTimingKey = useMemo(() => day.stops.map(s => `${s.drive}:${s.stay}`).join("|"), [day.stops]);
       React.useEffect(() => { if (day.stops.length > 0) fetchWeather(); }, [stopsLocationKey, stopsTimingKey, startH, startM]);
 
+      const [showDayEditModal, setShowDayEditModal] = useState(false);
       // Drag state for stop reordering
       const [dragId, setDragId] = useState(null);
       const [hoverIdx, setHoverIdx] = useState(null);
@@ -1420,26 +1862,9 @@
         setRecalcStopIds(new Set());
       };
 
-      const DragHandle = ({stopId}) => (
-        <div className="flex items-center justify-center py-1.5 cursor-grab active:cursor-grabbing bg-[#0d0d0d] hover:bg-[#1a1a1a] border-b border-[#2a2a2a] transition-colors rounded-t-xl"
-          draggable="true"
-          onDragStart={e => {
-            e.dataTransfer.setData("stopId", stopId);
-            e.dataTransfer.effectAllowed = "move";
-            requestAnimationFrame(() => setDragId(stopId));
-          }}
-          onDragEnd={()=>{ setDragId(null); setHoverIdx(null); }}>
-          <div className="flex flex-col gap-[3px] opacity-40">
-            <div className="w-5 h-[2px] bg-gray-400 rounded" />
-            <div className="w-5 h-[2px] bg-gray-400 rounded" />
-            <div className="w-5 h-[2px] bg-gray-400 rounded" />
-          </div>
-        </div>
-      );
-
       const DropIndicator = ({idx, visible}) => (
-        <div className="flex gap-0 relative z-10"
-          style={{height: visible ? "4px" : "0px", margin: visible ? "2px 0" : "0"}}
+        <div className="flex gap-0 relative z-10 items-center"
+          style={{height: visible ? "6px" : "0px"}}
           onDragOver={e => { e.preventDefault(); setHoverIdx(idx); }}
           onDrop={e => { e.preventDefault(); handleDrop(idx); }}>
           <div className="w-20 shrink-0" />
@@ -1450,120 +1875,99 @@
       );
 
       return (
-        <div className="mb-7 rounded-2xl py-3" style={{background: day.color + "08"}}>
-          <div className={`w-full ${day.gradient} rounded-xl px-5 py-3 mb-3 text-left border border-[#2a2a2a] card-glow relative`}>
-            {editMode && (
-              <button onClick={(e) => { e.stopPropagation(); onDeleteDay(day.day); }}
-                className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-red-500 hover:bg-red-400 text-white text-[10px] font-bold flex items-center justify-center z-20 shadow transition-colors"
-                title="Delete day">✕</button>
-            )}
-            {editMode && (
-              <div className="flex items-center justify-center py-1.5 -mx-5 -mt-3 mb-2 cursor-grab active:cursor-grabbing rounded-t-2xl bg-black/20 hover:bg-black/30 transition-colors"
-                draggable="true"
-                onDragStart={e => {
-                  e.dataTransfer.setData("daynum", String(day.day));
-                  e.dataTransfer.effectAllowed = "move";
-                  if (onDayDragStart) onDayDragStart(day.day);
-                }}
-                onDragEnd={() => { if (onDayDragEnd) onDayDragEnd(); }}
-              >
-                <div className="flex flex-col gap-[3px] opacity-40">
-                  <div className="w-6 h-[2px] bg-gray-400 rounded" />
-                  <div className="w-6 h-[2px] bg-gray-400 rounded" />
-                  <div className="w-6 h-[2px] bg-gray-400 rounded" />
+        <div className={`rounded-2xl ${isDayDragging ? "my-3" : "mb-7 pt-0 pb-3"}`} style={{background: isDayDragging ? "transparent" : day.color + "08"}}>
+          <div className={`w-full ${day.gradient} rounded-xl ${isDayDragging ? "" : "mb-3"} border border-[#2a2a2a] card-glow overflow-hidden`}>
+            <div className="flex">
+              {/* Zone 1: Drag handle */}
+              {editMode && (
+                <div className="w-8 shrink-0 flex items-center justify-center bg-black/20 border-r border-white/5 cursor-grab active:cursor-grabbing hover:bg-blue-500/15 transition-colors group/drag"
+                  draggable="true"
+                  onDragStart={e => {
+                    e.dataTransfer.setData("daynum", String(day.day));
+                    e.dataTransfer.effectAllowed = "move";
+                    if (onDayDragStart) onDayDragStart(day.day);
+                  }}
+                  onDragEnd={() => { if (onDayDragEnd) onDayDragEnd(); }}>
+                  <div className="flex flex-col gap-[3px] opacity-40 group-hover/drag:opacity-70 transition-opacity">
+                    <div className="w-3.5 h-[1.5px] bg-gray-300 group-hover/drag:bg-blue-400 rounded transition-colors" />
+                    <div className="w-3.5 h-[1.5px] bg-gray-300 group-hover/drag:bg-blue-400 rounded transition-colors" />
+                    <div className="w-3.5 h-[1.5px] bg-gray-300 group-hover/drag:bg-blue-400 rounded transition-colors" />
+                  </div>
                 </div>
-              </div>
-            )}
-            {editMode ? (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 flex-wrap">
+              )}
+              {/* Zone 2: Content (click to edit) */}
+              <div className={`flex-1 min-w-0 px-5 py-3 ${editMode ? "cursor-pointer hover:bg-white/[0.04] transition-colors group/edit" : ""}`}
+                onClick={()=>{ if (editMode) setShowDayEditModal(true); }}>
+                <div className="flex items-center gap-3">
                   <span className="text-[11px] font-bold px-3 py-1 rounded-full" style={{background:day.color,color:"#000"}}>DAY {day.day}</span>
-                  <div className="flex gap-1">
-                    {DAY_COLORS.map(c=>(
-                      <button key={c} onClick={()=>onEditDay(day.day,{color:c})}
-                        className={`w-5 h-5 rounded-full border-2 transition-all ${c===day.color?"border-white scale-110":"border-transparent opacity-60 hover:opacity-100"}`}
-                        style={{background:c}} />
-                    ))}
-                  </div>
+                  <h2 className="text-base font-bold text-white flex-1 min-w-0 truncate">{day.title}</h2>
+                  {editMode && (
+                    <svg className="w-3.5 h-3.5 text-gray-500 group-hover/edit:text-blue-400 shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                  )}
                 </div>
-                <input type="date" value={parseDate(day.date) || ""} onChange={e=>{
-                  const d = new Date(e.target.value + "T12:00:00");
-                  if (!isNaN(d)) onEditDay(day.day, {date: d.toLocaleDateString("en-AU", {weekday:"long", day:"numeric", month:"long", year:"numeric"})});
-                }} className="bg-black/30 border border-white/10 rounded px-2 py-1 text-[11px] text-gray-300" />
-                <input value={day.title} onChange={e=>onEditDay(day.day,{title:e.target.value})}
-                  className="w-full bg-black/30 border border-white/10 rounded px-2 py-1.5 text-base font-bold text-white" placeholder="Day title" />
-                <input value={day.subtitle} onChange={e=>onEditDay(day.day,{subtitle:e.target.value})}
-                  className="w-full bg-black/30 border border-white/10 rounded px-2 py-1 text-sm text-gray-400" placeholder="Subtitle" />
               </div>
-            ) : (
-              <div className="flex items-center gap-3">
-                <span className="text-[11px] font-bold px-3 py-1 rounded-full" style={{background:day.color,color:"#000"}}>DAY {day.day}</span>
-                <h2 className="text-base font-bold text-white">{day.title}</h2>
-              </div>
-            )}
+              {/* Zone 3: Delete button */}
+              {editMode && (
+                <button onClick={(e) => { e.stopPropagation(); onDeleteDay(day.day); }}
+                  className="w-8 shrink-0 flex items-center justify-center border-l border-white/5 bg-black/20 hover:bg-red-500/15 text-gray-500 hover:text-red-400 transition-colors"
+                  title="Delete day">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                </button>
+              )}
+            </div>
           </div>
-          <div className="mx-2" onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setHoverIdx(null); }}>
-            {editMode && day.stops.length > 0 && (
-              <div className="flex justify-center pb-2">
-                <div className="flex items-center gap-1.5 bg-[#141414] border border-[#2a2a2a] rounded-lg px-3 py-1">
-                  <span className="text-[9px] text-gray-500 uppercase tracking-wider font-medium">🕐 Depart</span>
-                  <div className="flex items-center bg-[#0a0a0a] rounded border border-[#2a2a2a] overflow-hidden">
-                    <select value={startH} onChange={e=>onStartTime(+e.target.value, null)}
-                      onClick={e=>e.stopPropagation()}
-                      className="bg-transparent px-1 py-0.5 text-sm font-bold text-center appearance-none focus:outline-none cursor-pointer"
-                      style={{color:day.color, width:"40px"}}>
-                      {Array.from({length:19},(_,i)=>i+5).map(h=><option key={h} value={h}>{String(h).padStart(2,"0")}</option>)}
-                    </select>
-                    <span className="text-sm font-bold" style={{color:day.color}}>:</span>
-                    <select value={startM} onChange={e=>onStartTime(null, +e.target.value)}
-                      onClick={e=>e.stopPropagation()}
-                      className="bg-transparent px-1 py-0.5 text-sm font-bold text-center appearance-none focus:outline-none cursor-pointer"
-                      style={{color:day.color, width:"40px"}}>
-                      {[0,5,10,15,20,25,30,35,40,45,50,55].map(m=><option key={m} value={m}>{String(m).padStart(2,"0")}</option>)}
-                    </select>
+          {showDayEditModal && (
+            <DayEditModal day={day} onEditDay={onEditDay} onCancel={()=>setShowDayEditModal(false)} />
+          )}
+          {!isDayDragging && (
+            <div className="mx-2" onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setHoverIdx(null); }}>
+              {editMode && day.stops.length === 0 && <AddStopButton onClick={()=>onAddStop(day.day, 0)} />}
+              {day.stops.map((s,i)=>(
+                <React.Fragment key={s.id}>
+                  {dragId && <DropIndicator idx={i} visible={hoverIdx === i} />}
+                  {i > 0 && !dragId && (
+                    <TravelSegment stop={s} prevStop={day.stops[i-1]} battFrom={levels[i].evStart} battTo={levels[i].arr} color={day.color}
+                      routeLoading={recalcStopIds.has(s.id)} editMode={editMode} onEditField={onEditField} onDelete={onDelete} vehicles={vehicles} onUpdateVehicles={onUpdateVehicles} />
+                  )}
+                  <div className={dragId === s.id ? "opacity-30" : ""}
+                    onDragOver={dragId ? (e => { e.preventDefault(); const rect = e.currentTarget.getBoundingClientRect(); const mid = rect.top + rect.height / 2; setHoverIdx(e.clientY < mid ? i : i + 1); }) : undefined}
+                    onDrop={dragId ? (e => { e.preventDefault(); handleDrop(hoverIdx); }) : undefined}>
+                    <StopCard stop={s} battArr={levels[i].arr} battDep={levels[i].dep} arrTime={levels[i].t} onChange={onChange} color={day.color} homeBattery={homeBattery} onHomeBatteryChange={onHomeBatteryChange} editMode={editMode} onDelete={onDelete} onEditField={onEditField} prevStop={i > 0 ? day.stops[i-1] : null} nextStop={i < day.stops.length - 1 ? day.stops[i+1] : null}
+                      isLast={i === day.stops.length - 1}
+                      stopWeather={weatherData?.stops?.find(w => w.stopId === s.id)}
+                      routeLoading={recalcStopIds.has(s.id)} weatherLoading={weatherLoadingIds.has(s.id)} setRecalcStopIds={setRecalcStopIds} onStopClick={onStopClick}
+                      onDragStartStop={id => requestAnimationFrame(() => setDragId(id))}
+                      onDragEndStop={() => { setDragId(null); setHoverIdx(null); }}
+                      {...(i === 0 ? {startH, startM, onStartTime} : {})} />
                   </div>
-                  <span className="text-[9px] text-gray-600">{startH >= 12 ? "PM" : "AM"}</span>
-                </div>
-              </div>
-            )}
-            {editMode && day.stops.length === 0 && <AddStopButton onClick={()=>onAddStop(day.day, 0)} />}
-            {day.stops.map((s,i)=>(
-              <React.Fragment key={s.id}>
-                {dragId && <DropIndicator idx={i} visible={hoverIdx === i} />}
-                {i > 0 && !dragId && (
-                  <TravelSegment stop={s} battFrom={levels[i].evStart} battTo={levels[i].arr} color={day.color}
-                    routeLoading={recalcStopIds.has(s.id)} editMode={editMode} onEditField={onEditField} />
-                )}
-                <div className={dragId === s.id ? "opacity-30" : ""}
-                  onDragOver={dragId ? (e => { e.preventDefault(); const rect = e.currentTarget.getBoundingClientRect(); const mid = rect.top + rect.height / 2; setHoverIdx(e.clientY < mid ? i : i + 1); }) : undefined}
-                  onDrop={dragId ? (e => { e.preventDefault(); handleDrop(hoverIdx); }) : undefined}>
-                  <StopCard stop={s} battArr={levels[i].arr} battDep={levels[i].dep} arrTime={levels[i].t} onChange={onChange} color={day.color} homeBattery={homeBattery} onHomeBatteryChange={onHomeBatteryChange} editMode={editMode} onDelete={onDelete} onEditField={onEditField} prevStop={i > 0 ? day.stops[i-1] : null} nextStop={i < day.stops.length - 1 ? day.stops[i+1] : null}
-                    isLast={i === day.stops.length - 1}
-                    stopWeather={weatherData?.stops?.find(w => w.stopId === s.id)}
-                    routeLoading={recalcStopIds.has(s.id)} weatherLoading={weatherLoadingIds.has(s.id)} setRecalcStopIds={setRecalcStopIds} onStopClick={onStopClick}
-                    onDragStartStop={id => requestAnimationFrame(() => setDragId(id))}
-                    onDragEndStop={() => { setDragId(null); setHoverIdx(null); }} />
-                </div>
-                {!dragId && editMode && i === day.stops.length - 1 && <AddStopButton onClick={()=>onAddStop(day.day, i + 1)} />}
-              </React.Fragment>
-            ))}
-            {dragId && <DropIndicator idx={day.stops.length} visible={hoverIdx === day.stops.length} />}
-          </div>
+                  {!dragId && editMode && i === day.stops.length - 1 && <AddStopButton onClick={()=>onAddStop(day.day, i + 1)} />}
+                </React.Fragment>
+              ))}
+              {dragId && <DropIndicator idx={day.stops.length} visible={hoverIdx === day.stops.length} />}
+            </div>
+          )}
         </div>
       );
     }
 
     // Simulate a full day and return the final battery %
-    function simulateDayEndBattery(day) {
+    function simulateDayEndBattery(day, vehicles) {
+      const vehicleBatt = {};
+      (vehicles || []).forEach(v => { vehicleBatt[v.id] = clampPct(day.startBattery); });
       let b = clampPct(day.startBattery);
       day.stops.forEach((s, i) => {
         const mode = s.travelMode || "drive";
+        const vid = s.vehicleId || (vehicles || [])[0]?.id || "v1";
+        const vehicle = (vehicles || []).find(v => v.id === vid) || (vehicles || [])[0];
+        const lastBatt = vehicleBatt[vid] ?? b;
         if (mode === "drive") {
-          const evStart = (i > 0 && s.evLinked === false) ? clampPct(s.evStartBattery ?? 100) : b;
+          const evStart = (i > 0 && s.evLinked === false) ? clampPct(s.evStartBattery ?? 100) : lastBatt;
           b = clampPct(evStart - (Number(s.batt) || 0));
+          vehicleBatt[vid] = b;
         }
         if (s.type === "charge" && s.charge) {
-          b = clampPct(calcChargedSOC(b, s.charge.kw, s.stay));
+          b = clampPct(calcChargedSOC(b, s.charge.kw, s.stay, vehicle));
+          vehicleBatt[vid] = b;
         }
       });
       return b;
@@ -1805,6 +2209,9 @@
         try { const s = localStorage.getItem("tripHomeBattery"); return s ? +s : 85; } catch { return 85; }
       });
       const [editMode, setEditMode] = useState(false);
+      const [vehicles, setVehicles] = useState(() => {
+        try { const s = localStorage.getItem("tripVehicles"); return s ? JSON.parse(s) : [DEFAULT_VEHICLE]; } catch { return [DEFAULT_VEHICLE]; }
+      });
 
       const [showResetConfirm, setShowResetConfirm] = useState(false);
       const [showSaveConfirm, setShowSaveConfirm] = useState(false);
@@ -1876,7 +2283,17 @@
         return () => document.removeEventListener("mousedown", handler);
       }, []);
 
-      const showCloudMsg = (msg) => { setCloudMsg(msg); setTimeout(() => setCloudMsg(null), 3000); };
+      const toastTimer = React.useRef(null);
+      const [toastFading, setToastFading] = useState(false);
+      const showCloudMsg = (msg) => {
+        if (toastTimer.current) clearTimeout(toastTimer.current);
+        setToastFading(false);
+        setCloudMsg(msg);
+        toastTimer.current = setTimeout(() => {
+          setToastFading(true);
+          setTimeout(() => { setCloudMsg(null); setToastFading(false); }, 300);
+        }, 2500);
+      };
 
       const onCloudSave = async (forceOverwrite) => {
         setShowSaveConfirm(false);
@@ -2085,6 +2502,7 @@
 
       React.useEffect(() => { localStorage.setItem("tripStartTimes", JSON.stringify(startTimes)); }, [startTimes]);
       React.useEffect(() => { localStorage.setItem("tripHomeBattery", String(homeBattery)); }, [homeBattery]);
+      React.useEffect(() => { localStorage.setItem("tripVehicles", JSON.stringify(vehicles)); }, [vehicles]);
       React.useEffect(() => { localStorage.setItem("heroTitle", heroTitle); }, [heroTitle]);
       React.useEffect(() => { localStorage.setItem("heroSubtitle", heroSubtitle); }, [heroSubtitle]);
       React.useEffect(() => { localStorage.setItem("heroSnippet", heroSnippet); }, [heroSnippet]);
@@ -2099,8 +2517,24 @@
         const EDGE = 150; // large zone for easy scrolling
         const MAX_SPEED = 20;
 
+        const getPinnedBottom = () => {
+          const stickyEl = document.querySelector('.sticky-map');
+          return stickyEl ? stickyEl.getBoundingClientRect().bottom : 44;
+        };
+
+        const isAtScrollTop = () => {
+          const firstDay = dayRefs.current?.[0];
+          if (!firstDay) return false;
+          return firstDay.getBoundingClientRect().top >= getPinnedBottom();
+        };
+
         const doScroll = () => {
           if (scrollSpeed !== 0) {
+            if (scrollSpeed < 0 && isAtScrollTop()) {
+              scrollSpeed = 0;
+              if (scrollRAF) { cancelAnimationFrame(scrollRAF); scrollRAF = null; }
+              return;
+            }
             window.scrollBy(0, scrollSpeed);
             scrollRAF = requestAnimationFrame(doScroll);
           }
@@ -2110,9 +2544,14 @@
           e.preventDefault();
           const y = e.clientY;
           const h = window.innerHeight;
+          const pinnedBottom = getPinnedBottom();
           let newSpeed = 0;
-          if (y < EDGE) {
-            newSpeed = -MAX_SPEED * Math.pow(1 - y / EDGE, 1.5);
+          // Only scroll up when cursor is in the zone just below the pinned section
+          if (y > pinnedBottom && y < pinnedBottom + EDGE) {
+            if (!isAtScrollTop()) {
+              const intensity = 1 - (y - pinnedBottom) / EDGE;
+              newSpeed = -MAX_SPEED * Math.pow(intensity, 1.5);
+            }
           } else if (y > h - EDGE) {
             newSpeed = MAX_SPEED * Math.pow(1 - (h - y) / EDGE, 1.5);
           }
@@ -2165,12 +2604,12 @@
           if (i === 0) {
             result.push({ ...days[i], startBattery: homeBattery });
           } else {
-            const prevEnd = simulateDayEndBattery(result[i - 1]);
+            const prevEnd = simulateDayEndBattery(result[i - 1], vehicles);
             result.push({ ...days[i], startBattery: prevEnd });
           }
         }
         return result;
-      }, [days, homeBattery]);
+      }, [days, homeBattery, vehicles]);
 
       // Clamp activeMapDay when days change
       React.useEffect(() => {
@@ -2267,6 +2706,7 @@
           desc: "", stay: 30, min: 10, max: 120,
           dist: 0, drive: 0, batt: 0, emoji: "📍",
           lat: -37.8, lng: 144.0, mq: "Melbourne+VIC",
+          vehicleId: vehicles[0]?.id || "v1",
         };
         setDays(p => p.map(d => {
           if (d.day !== dayNum) return d;
@@ -2494,9 +2934,6 @@
               </button>
               <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] gradient-text">JX Travel Planner</span>
               <div className="flex items-center gap-1.5">
-                {cloudMsg && (
-                  <span className={`text-[10px] font-medium animate-pulse mr-0.5 ${cloudMsg.startsWith("✕") ? "text-red-400" : "text-green-400"}`}>{cloudMsg}</span>
-                )}
                 <div className="relative">
                   <button onClick={()=>{ setShowSaveConfirm(!showSaveConfirm); setShowResetConfirm(false); }} disabled={cloudSaving}
                     className="flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-white/5 hover:bg-green-500/10 text-[10px] text-gray-400 hover:text-green-400 transition-all disabled:opacity-50">
@@ -2597,14 +3034,15 @@
           <div className="h-11" />
 
           {isOffline && (
-            <div className="fixed left-0 right-0 z-50 bg-gradient-to-r from-gray-600 via-gray-500 to-gray-600 flex items-center justify-center py-1.5 shadow-lg" style={{top:"44px"}}>
-              <svg className="w-4 h-4 mr-1.5 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M18.364 5.636a9 9 0 010 12.728M5.636 18.364a9 9 0 010-12.728" /><path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18" /></svg>
-              <span className="text-[11px] font-bold text-white tracking-widest uppercase">Offline — Changes saved locally</span>
+            <div className="fixed left-0 right-0 z-50 bg-gradient-to-r from-gray-600 via-gray-500 to-gray-600 flex items-center justify-center py-0.5 shadow-lg" style={{top:"44px"}}>
+              <svg className="w-3 h-3 mr-1 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M18.364 5.636a9 9 0 010 12.728M5.636 18.364a9 9 0 010-12.728" /><path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18" /></svg>
+              <span className="text-[9px] font-bold text-white tracking-widest uppercase">Offline — Changes saved locally</span>
             </div>
           )}
           {editMode && (
-            <div className="fixed left-0 right-0 z-40 bg-gradient-to-r from-blue-600 via-blue-500 to-blue-600 flex items-center justify-center py-1.5 shadow-lg" style={{top: isOffline ? "72px" : "44px"}}>
-              <span className="text-[11px] font-bold text-white tracking-widest uppercase">✏️ Edit Mode</span>
+            <div className="fixed left-0 right-0 z-40 bg-gradient-to-r from-blue-600 via-blue-500 to-blue-600 flex items-center justify-center py-0.5 shadow-lg" style={{top: isOffline ? "64px" : "44px"}}>
+              <svg className="w-3 h-3 mr-1 inline text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+              <span className="text-[9px] font-bold text-white tracking-widest uppercase">Edit Mode</span>
             </div>
           )}
           {/* Hero */}
@@ -2653,7 +3091,7 @@
 
           {/* Sticky Route Map + Day Selector */}
           {daysWithBattery.length > 0 && (
-            <div className="sticky-map bg-[#0a0a0a]">
+            <div className="sticky-map bg-[#0a0a0a]" style={{top: `${36 + (isOffline ? 20 : 0) + (editMode ? 20 : 0)}px`}}>
               <StickyRouteMap days={daysWithBattery} activeDayIdx={activeMapDay} startTimes={startTimes} activeStopId={activeStopId} />
               {/* Active day stats */}
               {daysWithBattery[activeMapDay] && (() => {
@@ -2705,39 +3143,32 @@
           )}
 
           {/* Days */}
-          <div className="max-w-4xl mx-auto px-4 py-2">
+          <div className="max-w-4xl mx-auto px-4 py-2" onDragLeave={e => { if (dragDayNum && !e.currentTarget.contains(e.relatedTarget)) setHoverDayIdx(null); }}>
             {daysWithBattery.map((d,i)=>(
               <React.Fragment key={d.day}>
                 {dragDayNum && (
-                  <div className="mb-3"
+                  <div className="flex items-center" style={{height: hoverDayIdx === i ? "6px" : "0px"}}
                     onDragOver={e => { e.preventDefault(); setHoverDayIdx(i); }}
-                    onDragLeave={()=>setHoverDayIdx(null)}
                     onDrop={e => { e.preventDefault(); const from = +e.dataTransfer.getData("daynum"); if (from) { onReorderDay(from, d.day); setDragDayNum(null); setHoverDayIdx(null); }}}>
-                    <div className={`w-full py-3 rounded-xl border-2 border-dashed transition-all flex items-center justify-center text-[11px] font-medium ${
-                      hoverDayIdx === i ? "border-blue-500 bg-blue-500/10 text-blue-400" : "border-[#2a2a2a] text-gray-600"
-                    }`}>
-                      {hoverDayIdx === i && dragDayNum ? `Move Day ${dragDayNum} here` : "Drop day here"}
-                    </div>
+                    {hoverDayIdx === i && <div className="w-full h-[3px] rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />}
                   </div>
                 )}
-                <div ref={el => dayRefs.current[i] = el} className={dragDayNum === d.day ? "opacity-30" : ""}>
+                <div ref={el => dayRefs.current[i] = el} className={dragDayNum === d.day ? "opacity-30" : ""}
+                  onDragOver={dragDayNum ? (e => { e.preventDefault(); const rect = e.currentTarget.getBoundingClientRect(); const mid = rect.top + rect.height / 2; setHoverDayIdx(e.clientY < mid ? i : i + 1); }) : undefined}
+                  onDrop={dragDayNum ? (e => { e.preventDefault(); const from = +e.dataTransfer.getData("daynum"); if (from) { onReorderDay(from, hoverDayIdx <= i ? daysWithBattery[hoverDayIdx]?.day || d.day : (daysWithBattery[hoverDayIdx]?.day || d.day + 1)); setDragDayNum(null); setHoverDayIdx(null); }}) : undefined}>
                   <DaySection day={d} onChange={onChange} startH={startTimes[i]?.h??8} startM={startTimes[i]?.m??0} onStartTime={(h,m)=>onStartTime(i,h,m)} homeBattery={homeBattery} onHomeBatteryChange={setHomeBattery} editMode={editMode} onDelete={onDelete} onEditField={onEditField} onAddStop={onAddStop} onEditDay={onEditDay} onDeleteDay={onDeleteDay} recalcStopIds={recalcStopIds} setRecalcStopIds={setRecalcStopIds}
-                    onStopClick={setActiveStopId}
+                    onStopClick={setActiveStopId} isDayDragging={!!dragDayNum}
                     onDayDragStart={num => { requestAnimationFrame(() => setDragDayNum(num)); }}
-                    onDayDragEnd={() => { setDragDayNum(null); setHoverDayIdx(null); }} />
+                    onDayDragEnd={() => { setDragDayNum(null); setHoverDayIdx(null); }}
+                    vehicles={vehicles} onUpdateVehicles={setVehicles} />
                 </div>
               </React.Fragment>
             ))}
             {dragDayNum && (
-              <div className="mb-3"
+              <div className="flex items-center" style={{height: hoverDayIdx === daysWithBattery.length ? "6px" : "0px"}}
                 onDragOver={e => { e.preventDefault(); setHoverDayIdx(daysWithBattery.length); }}
-                onDragLeave={()=>setHoverDayIdx(null)}
                 onDrop={e => { e.preventDefault(); const from = +e.dataTransfer.getData("daynum"); if (from) { onReorderDay(from, daysWithBattery[daysWithBattery.length-1].day + 1); setDragDayNum(null); setHoverDayIdx(null); }}}>
-                <div className={`w-full py-3 rounded-xl border-2 border-dashed transition-all flex items-center justify-center text-[11px] font-medium ${
-                  hoverDayIdx === daysWithBattery.length ? "border-blue-500 bg-blue-500/10 text-blue-400" : "border-[#2a2a2a] text-gray-600"
-                }`}>
-                  {hoverDayIdx === daysWithBattery.length ? `Move Day ${dragDayNum} here` : "Drop day here"}
-                </div>
+                {hoverDayIdx === daysWithBattery.length && <div className="w-full h-[3px] rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />}
               </div>
             )}
             {!dragDayNum && editMode && (
@@ -2755,17 +3186,24 @@
               <h3 className="text-base font-bold text-white mb-3">⚡ Charging Strategy Summary</h3>
               <div className="space-y-2">
                 {daysWithBattery.flatMap(day => {
+                  const vBatt = {};
+                  vehicles.forEach(v => { vBatt[v.id] = clampPct(day.startBattery); });
                   let b = clampPct(day.startBattery);
                   return day.stops.map((s, i) => {
                     const mode = s.travelMode || "drive";
+                    const vid = s.vehicleId || vehicles[0]?.id || "v1";
+                    const vehicle = vehicles.find(v => v.id === vid) || vehicles[0];
                     if (mode === "drive") {
-                      const evStart = (i > 0 && s.evLinked === false) ? clampPct(s.evStartBattery ?? 100) : b;
+                      const lastBatt = vBatt[vid] ?? b;
+                      const evStart = (i > 0 && s.evLinked === false) ? clampPct(s.evStartBattery ?? 100) : lastBatt;
                       b = clampPct(evStart - (Number(s.batt) || 0));
+                      vBatt[vid] = b;
                     }
                     const arr = b;
                     if (s.type==="charge" && s.charge) {
-                      const dep = clampPct(calcChargedSOC(arr, s.charge.kw, s.stay));
+                      const dep = clampPct(calcChargedSOC(arr, s.charge.kw, s.stay, vehicle));
                       b = dep;
+                      vBatt[vid] = dep;
                       return (
                         <div key={s.id} className="flex items-center justify-between bg-[#0a0a0a] rounded-lg p-2.5 border border-green-500/10">
                           <div className="flex items-center gap-2.5">
@@ -2798,6 +3236,22 @@
           <footer className="border-t border-[#1a1a1a] py-5 text-center">
             <p className="text-[11px] text-gray-600">JX Travel Planner · Distances & times are estimates · Verify charger availability before departure</p>
           </footer>
+
+          {/* Toast banner */}
+          {cloudMsg && (
+            <div className={`fixed bottom-0 left-0 right-0 z-50 flex justify-center pointer-events-none ${toastFading ? "toast-exit" : "toast-enter"}`}>
+              <div className={`flex items-center gap-2 px-4 py-2 mb-4 rounded-xl shadow-2xl pointer-events-auto ${
+                cloudMsg.startsWith("✕") ? "bg-red-600 text-white" :
+                cloudMsg.startsWith("✓") ? "bg-emerald-600 text-white" :
+                "bg-gray-700 text-white"
+              }`}>
+                {cloudMsg.startsWith("✕") && <svg className="w-3.5 h-3.5 shrink-0 text-white/80" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>}
+                {cloudMsg.startsWith("✓") && <svg className="w-3.5 h-3.5 shrink-0 text-white/80" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+                {!cloudMsg.startsWith("✕") && !cloudMsg.startsWith("✓") && <svg className="w-3.5 h-3.5 shrink-0 text-white/80" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+                <span className="text-[11px] font-medium">{cloudMsg.replace(/^[✕✓]\s*/, "")}</span>
+              </div>
+            </div>
+          )}
 
           {/* Floating buttons */}
           <div className="fixed bottom-6 right-6 flex flex-col items-center gap-3 z-30">
